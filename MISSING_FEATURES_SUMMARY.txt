@@ -1,0 +1,136 @@
+# J Language - Missing Features Summary
+
+## CRITICAL FEATURES TO IMPLEMENT (from jnew_features.txt)
+
+### 1. CLASS SYSTEM (Partially Done)
+- ✅ Class declaration syntax
+- ✅ Class and Instance Value types
+- ❌ Class instantiation: ClassName.new(args)
+- ❌ Method calls on instances: instance.method()
+- ❌ Constructor support
+- ❌ Inheritance implementation
+
+### 2. ADVANCED TYPES
+- ✅ Counter type (exists in Value enum)
+- ❌ Grid type (2D arrays with neighbor logic)
+- ❌ Fixed precision type (banking math)
+- ❌ Phantom types (zero-cost type tags)
+- ❌ Secret types (memory-protected)
+- ❌ Canary types (corruption detection)
+
+### 3. ADVANCED LOOPS
+- ❌ converge loop (fixed-point iteration)
+- ❌ fuzz loop (chaos testing)
+- ❌ within loop (time-bounded execution)
+- ❌ rollback loop (transactional memory)
+- ❌ window loop (sliding window)
+- ❌ flood loop (BFS/DFS traversal)
+
+### 4. ASYNC/CONCURRENCY
+- ❌ race block (competitive concurrency)
+- ❌ pulse stream (reactive async)
+- ❌ barrier function (synchronization)
+- ❌ retry with jitter
+- ❌ memo async (TTL caching)
+
+### 5. SECURITY FEATURES
+- ❌ untrusted type (taint analysis)
+- ❌ secret type (protected memory)
+- ❌ secure blocks (constant-time execution)
+- ❌ sandbox capabilities
+- ❌ canary values
+
+### 6. ENTERPRISE FEATURES
+- ❌ component & auto-wiring (DI)
+- ❌ contract interfaces (API-first)
+- ❌ Built-in observability (metrics/trace)
+- ❌ workspace (monorepo support)
+
+### 7. AI/ML FEATURES
+- ❌ strategy blocks (distributed training)
+- ❌ sharded tensors
+- ❌ streaming datasets
+- ❌ neuro_evolve
+
+### 8. TOOLING
+- ❌ task & build system
+- ❌ sql native blocks
+- ❌ packet binary layouts
+- ❌ gui native desktop
+- ❌ doc interactive documentation
+- ❌ env schema
+
+### 9. ALGORITHM HELPERS
+- ❌ grid type with .neighbors()
+- ❌ flood loop
+- ❌ window loop
+- ❌ scan/fold vectors
+- ❌ solver block (backtracking)
+- ✅ counter type (exists, needs methods)
+
+### 10. IMPORT SYSTEM
+- ❌ use statement (J to J)
+- ❌ foreign bridge (Python/JS)
+- ❌ embed block (inline C)
+- ❌ live use (hot-reload)
+- ❌ sandboxed imports
+
+### 11. CRITICAL SYSTEMS
+- ❌ fixed precision (COBOL-grade math)
+- ❌ @prove (formal verification)
+- ❌ audit classes (immutable ledger)
+- ❌ layout (bit-perfect memory)
+- ❌ deterministic blocks
+- ❌ triple (radiation hardening)
+- ❌ shield blocks (fault recovery)
+- ❌ @no_heap enforcement
+- ❌ sequence (state machine)
+- ❌ pure/effect functions
+- ❌ invariant (perpetual truths)
+
+### 12. MISC FEATURES
+- ❌ Scoped extensions (extend type)
+- ❌ Broadcast dot operator
+- ❌ Defer statements
+- ❌ Mirror blocks (dynamic dispatch)
+- ❌ Memo variables
+- ❌ Phantom types
+- ❌ snapshot errors (post-mortem debugging)
+- ❌ alias keywords (multilingual)
+- ❌ evolve blocks (DB migrations)
+- ❌ comptime (compile-time execution)
+- ❌ eco mode (battery awareness)
+
+## PRIORITY IMPLEMENTATION ORDER
+
+### Phase 1: Core OOP (IMMEDIATE)
+1. Class instantiation (ClassName.new())
+2. Method calls on instances
+3. Constructor support
+4. this/self binding in methods
+
+### Phase 2: Algorithm Support (HIGH PRIORITY)
+1. Grid type with neighbors()
+2. Counter methods (most_common, etc.)
+3. Window loop (sliding window)
+4. Defer statements
+
+### Phase 3: Advanced Features (MEDIUM PRIORITY)
+1. Converge loop
+2. Flood loop
+3. Fixed precision type
+4. Async basics (race, barrier)
+
+### Phase 4: Enterprise/Production (LOWER PRIORITY)
+1. Audit classes
+2. Deterministic blocks
+3. Component system
+4. Import system
+
+## NOTES
+- The interpreter already has 200+ built-in functions
+- Most basic types are implemented
+- For loops have all variants
+- Pattern matching works
+- Error handling (try/catch) works
+- Rich output (colors, tables, animations) works

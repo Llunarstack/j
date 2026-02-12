@@ -1,0 +1,37 @@
+# Rust
+j-lang/target/
+j-lang/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# J language test files (temporary)
+j-lang/test_*.j
+j-lang/*.j
+!j-lang/examples/*.j
+!j-lang/demo.j
+!j-lang/main.j
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
