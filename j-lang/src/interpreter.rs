@@ -42,6 +42,10 @@ pub enum Value {
     Matrix(Vec<Vec<f64>>), // 2D matrix
     Grid(Vec<Vec<Value>>), // 2D grid with neighbor logic
     GridNeighbors(Box<Value>), // callable: grid.neighbors(i, j) -> list of adjacent cell values
+    GridNeighbors8(Box<Value>), // callable: grid.neighbors8(i, j) -> 8-directional neighbors
+    GridFindAll(Box<Value>), // callable: grid.find_all(value) -> list of (row, col) positions
+    GridRow(Box<Value>), // callable: grid.row(n) -> list of values in row n
+    GridCol(Box<Value>), // callable: grid.col(n) -> list of values in column n
     Enum {
         name: String,
         variants: HashMap<String, Value>,
@@ -127,6 +131,10 @@ impl fmt::Display for Value {
             Value::OnceCached { inner, .. } => write!(f, "<once {}>", inner),
             Value::MirrorDispatch { method_name, .. } => write!(f, "<mirror {}>", method_name),
             Value::GridNeighbors(_) => write!(f, "<grid.neighbors>"),
+            Value::GridNeighbors8(_) => write!(f, "<grid.neighbors8>"),
+            Value::GridFindAll(_) => write!(f, "<grid.find_all>"),
+            Value::GridRow(_) => write!(f, "<grid.row>"),
+            Value::GridCol(_) => write!(f, "<grid.col>"),
             Value::Infinity(positive) => {
                 if *positive {
                     write!(f, "inf")
@@ -2458,6 +2466,173 @@ impl Interpreter {
             AstNode::MacroCall { .. } => {
                 Err("MacroCall not yet implemented".to_string())
             }
+            
+            // ===== NEW ADVANCED FEATURE HANDLERS =====
+            
+            // Traits
+            AstNode::TraitDeclaration { name, methods } => {
+                // Store trait definition in environment
+                let trait_methods: Vec<String> = methods.iter().filter_map(|m| {
+                    if let AstNode::FunctionDeclaration { name, .. } = m {
+                        Some(name.clone())
+                    } else {
+                        None
+                    }
+                }).collect();
+                
+                self.set_variable(
+                    format!("__trait_{}", name),
+                    Value::String(trait_methods.join(","))
+                );
+                Ok(Value::None)
+            }
+            
+            // Async/Await
+            AstNode::AsyncFunction { name, params, return_type: _, body } => {
+                // For now, treat async functions like regular functions
+                // In a full implementation, this would return a Promise/Future
+                let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
+                let func = Value::Function {
+                    name: name.clone(),
+                    params: param_names,
+                    body: body.clone(),
+                };
+                self.set_variable(name.clone(), func);
+                Ok(Value::None)
+            }
+            
+            AstNode::AwaitExpression { expr } => {
+                // For now, just evaluate the expression synchronously
+                // In a full implementation, this would wait for a Promise/Future
+                self.eval_node(expr)
+            }
+            
+            // Module System
+            AstNode::ModuleDeclaration { name, body } => {
+                // Create a new scope for the module
+                self.push_scope();
+                let result = self.eval_node(body)?;
+                
+                // Store module exports (for now, just mark it as loaded)
+                self.set_variable(
+                    format!("__module_{}", name),
+                    Value::Boolean(true)
+                );
+                self.pop_scope();
+                Ok(result)
+            }
+            
+            AstNode::ImportStatement { module_path, items } => {
+                // For now, just mark the import as processed
+                // In a full implementation, this would load the module and import items
+                let path_str = module_path.join(".");
+                if items.is_empty() {
+                    // Import all
+                    self.set_variable(
+                        format!("__import_{}", path_str),
+                        Value::Boolean(true)
+                    );
+                } else {
+                    // Import specific items
+                    for item in items {
+                        self.set_variable(
+                            format!("__import_{}_{}", path_str, item),
+                            Value::Boolean(true)
+                        );
+                    }
+                }
+                Ok(Value::None)
+            }
+            
+            AstNode::UseStatement { path } => {
+                // For now, just mark the use statement as processed
+                let path_str = path.join(".");
+                self.set_variable(
+                    format!("__use_{}", path_str),
+                    Value::Boolean(true)
+                );
+                Ok(Value::None)
+            }
+            
+            // Generics
+            AstNode::GenericFunction { name, type_params: _, params, return_type: _, body } => {
+                // For now, treat generic functions like regular functions
+                // In a full implementation, this would support type parameters
+                let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
+                let func = Value::Function {
+                    name: name.clone(),
+                    params: param_names,
+                    body: body.clone(),
+                };
+                self.set_variable(name.clone(), func);
+                Ok(Value::None)
+            }
+            
+            AstNode::GenericClass { name, type_params: _, parent, traits: _, fields, methods, static_fields, static_methods } => {
+                // For now, treat generic classes like regular classes
+                // In a full implementation, this would support type parameters
+                
+                // Convert fields to HashMap
+                let mut field_map = HashMap::new();
+                for field in fields {
+                    if let Some(default_value) = &field.default_value {
+                        let val = self.eval_node(default_value)?;
+                        field_map.insert(field.name.clone(), val);
+                    } else {
+                        field_map.insert(field.name.clone(), Value::None);
+                    }
+                }
+                
+                // Convert methods to HashMap
+                let mut method_map = HashMap::new();
+                for method in methods {
+                    if let AstNode::FunctionDeclaration { name, params, body, .. } = method {
+                        let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
+                        let func = Value::Function {
+                            name: name.clone(),
+                            params: param_names,
+                            body: body.clone(),
+                        };
+                        method_map.insert(name.clone(), func);
+                    }
+                }
+                
+                // Convert static fields to HashMap
+                let mut static_field_map = HashMap::new();
+                for field in static_fields {
+                    if let Some(default_value) = &field.default_value {
+                        let val = self.eval_node(default_value)?;
+                        static_field_map.insert(field.name.clone(), val);
+                    } else {
+                        static_field_map.insert(field.name.clone(), Value::None);
+                    }
+                }
+                
+                // Convert static methods to HashMap
+                let mut static_method_map = HashMap::new();
+                for method in static_methods {
+                    if let AstNode::FunctionDeclaration { name, params, body, .. } = method {
+                        let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
+                        let func = Value::Function {
+                            name: name.clone(),
+                            params: param_names,
+                            body: body.clone(),
+                        };
+                        static_method_map.insert(name.clone(), func);
+                    }
+                }
+                
+                let class_value = Value::Class {
+                    name: name.clone(),
+                    parent: parent.clone(),
+                    fields: field_map,
+                    methods: method_map,
+                    static_fields: static_field_map,
+                    static_methods: static_method_map,
+                };
+                self.set_variable(name.clone(), class_value);
+                Ok(Value::None)
+            }
             // jnew_features: run body or stub
             AstNode::ExtendType { target_type: _, methods: _ } => Ok(Value::None),
             AstNode::PhantomDecl { name: _ } => Ok(Value::None),
@@ -2774,6 +2949,10 @@ impl Interpreter {
                     Value::Matrix(_) => "mat",
                     Value::Grid(_) => "grid",
                     Value::GridNeighbors(_) => "grid_neighbors",
+                    Value::GridNeighbors8(_) => "grid_neighbors8",
+                    Value::GridFindAll(_) => "grid_find_all",
+                    Value::GridRow(_) => "grid_row",
+                    Value::GridCol(_) => "grid_col",
                     Value::Enum { .. } => "enum",
                     Value::EnumVariant { .. } => "enum_variant",
                             Value::Class { .. } => "class",
@@ -5960,6 +6139,10 @@ impl Interpreter {
                     Value::Matrix(_) => "mat",
                     Value::Grid(_) => "grid",
                     Value::GridNeighbors(_) => "grid_neighbors",
+                    Value::GridNeighbors8(_) => "grid_neighbors8",
+                    Value::GridFindAll(_) => "grid_find_all",
+                    Value::GridRow(_) => "grid_row",
+                    Value::GridCol(_) => "grid_col",
                     Value::Enum { .. } => "enum",
                     Value::EnumVariant { .. } => "enum_variant",
                             Value::Class { .. } => "class",
@@ -6303,6 +6486,26 @@ impl Interpreter {
                 Ok(Value::Matrix(result))
             }
             
+            // Counter operations
+            (Value::Counter(a), BinaryOp::Add, Value::Counter(b)) => {
+                let mut result = a.clone();
+                for (key, count) in b.iter() {
+                    *result.entry(key.clone()).or_insert(0) += count;
+                }
+                Ok(Value::Counter(result))
+            }
+            (Value::Counter(a), BinaryOp::Subtract, Value::Counter(b)) => {
+                let mut result = a.clone();
+                for (key, count) in b.iter() {
+                    let entry = result.entry(key.clone()).or_insert(0);
+                    *entry -= count;
+                    if *entry <= 0 {
+                        result.remove(key);
+                    }
+                }
+                Ok(Value::Counter(result))
+            }
+            
             (Value::Integer(a), BinaryOp::Equal, Value::Integer(b)) => Ok(Value::Boolean(a == b)),
             (Value::Float(a), BinaryOp::Equal, Value::Float(b)) => Ok(Value::Boolean(a == b)),
             (Value::String(a), BinaryOp::Equal, Value::String(b)) => Ok(Value::Boolean(a == b)),
@@ -6497,6 +6700,10 @@ impl Interpreter {
                     "cols" | "columns" => Ok(Value::Integer(cols)),
                     "len" | "length" | "size" => Ok(Value::Integer(rows * cols)),
                     "neighbors" => Ok(Value::GridNeighbors(Box::new(Value::Grid(grid.clone())))),
+                    "neighbors8" => Ok(Value::GridNeighbors8(Box::new(Value::Grid(grid.clone())))),
+                    "find_all" => Ok(Value::GridFindAll(Box::new(Value::Grid(grid.clone())))),
+                    "row" => Ok(Value::GridRow(Box::new(Value::Grid(grid.clone())))),
+                    "col" => Ok(Value::GridCol(Box::new(Value::Grid(grid.clone())))),
                     _ => Err(format!("Grid method '{}' not found", field)),
                 }
             }
@@ -6610,10 +6817,93 @@ impl Interpreter {
                 }
                 Ok(Value::List(neighbors))
             }
+            Value::GridNeighbors8(grid_val) => {
+                let Value::Grid(grid) = grid_val.as_ref() else {
+                    return Err("GridNeighbors8 requires a grid".to_string());
+                };
+                if eval_args.len() != 2 {
+                    return Err("grid.neighbors8(i, j) requires exactly 2 arguments (row, col)".to_string());
+                };
+                let i = match &eval_args[0] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("grid.neighbors8 row must be integer".to_string()),
+                };
+                let j = match &eval_args[1] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("grid.neighbors8 col must be integer".to_string()),
+                };
+                let rows = grid.len();
+                let cols = if grid.is_empty() { 0 } else { grid[0].len() };
+                let mut neighbors = Vec::new();
+                // 8 directions: N, NE, E, SE, S, SW, W, NW
+                for (di, dj) in [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)] {
+                    let ni = i as i64 + di;
+                    let nj = j as i64 + dj;
+                    if ni >= 0 && ni < rows as i64 && nj >= 0 && nj < cols as i64 {
+                        neighbors.push(grid[ni as usize][nj as usize].clone());
+                    }
+                }
+                Ok(Value::List(neighbors))
+            }
+            Value::GridFindAll(grid_val) => {
+                let Value::Grid(grid) = grid_val.as_ref() else {
+                    return Err("GridFindAll requires a grid".to_string());
+                };
+                if eval_args.len() != 1 {
+                    return Err("grid.find_all(value) requires exactly 1 argument".to_string());
+                }
+                let target = &eval_args[0];
+                let mut positions = Vec::new();
+                for (i, row) in grid.iter().enumerate() {
+                    for (j, cell) in row.iter().enumerate() {
+                        if self.values_equal(cell, target) {
+                            positions.push(Value::Tuple(vec![Value::Integer(i as i64), Value::Integer(j as i64)]));
+                        }
+                    }
+                }
+                Ok(Value::List(positions))
+            }
+            Value::GridRow(grid_val) => {
+                let Value::Grid(grid) = grid_val.as_ref() else {
+                    return Err("GridRow requires a grid".to_string());
+                };
+                if eval_args.len() != 1 {
+                    return Err("grid.row(n) requires exactly 1 argument".to_string());
+                }
+                let row_idx = match &eval_args[0] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("grid.row index must be integer".to_string()),
+                };
+                if row_idx >= grid.len() {
+                    return Err(format!("Row index {} out of bounds (grid has {} rows)", row_idx, grid.len()));
+                }
+                Ok(Value::List(grid[row_idx].clone()))
+            }
+            Value::GridCol(grid_val) => {
+                let Value::Grid(grid) = grid_val.as_ref() else {
+                    return Err("GridCol requires a grid".to_string());
+                };
+                if eval_args.len() != 1 {
+                    return Err("grid.col(n) requires exactly 1 argument".to_string());
+                }
+                let col_idx = match &eval_args[0] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("grid.col index must be integer".to_string()),
+                };
+                if grid.is_empty() {
+                    return Err("Cannot get column from empty grid".to_string());
+                }
+                let cols = grid[0].len();
+                if col_idx >= cols {
+                    return Err(format!("Column index {} out of bounds (grid has {} columns)", col_idx, cols));
+                }
+                let column: Vec<Value> = grid.iter().map(|row| row[col_idx].clone()).collect();
+                Ok(Value::List(column))
+            }
             _ => Err(format!("Cannot call {} as function", callee)),
         }
     }
-
+    
     fn get_variable(&self, name: &str) -> Result<Value, String> {
         // Check static variables first
         if let Some(value) = self.statics.get(name) {
