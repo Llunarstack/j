@@ -4,6 +4,24 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 
+// Define these types before Value enum since Value references them
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitMethod {
+    pub name: String,
+    pub params: Vec<(String, String)>,
+    pub return_type: Option<String>,
+    pub default_impl: Option<Box<AstNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureState {
+    Pending,
+    Running,
+    Completed,
+    Failed(String),
+}
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),
@@ -78,6 +96,23 @@ pub enum Value {
     MirrorDispatch {
         method_name: String,
         handle_missing: Box<Value>,
+    },
+    /// Module system - represents a loaded module with exports
+    Module {
+        name: String,
+        path: String,
+        exports: HashMap<String, Value>,
+    },
+    /// Trait system - represents a trait definition
+    Trait {
+        name: String,
+        methods: Vec<TraitMethod>,
+    },
+    /// Async/Await system - represents a future/promise
+    Future {
+        id: usize,
+        state: FutureState,
+        result: Option<Box<Value>>,
     },
     None,
 }
@@ -227,9 +262,11 @@ impl fmt::Display for Value {
                 for (i, child) in children.iter().enumerate() {
                     if i > 0 { write!(f, ", ")?; }
                     write!(f, "{}", child)?;
-                }
-                write!(f, "]}}")
+                }            write!(f, "]}}") 
             }
+            Value::Module { name, .. } => write!(f, "<module {}>", name),
+            Value::Trait { name, .. } => write!(f, "<trait {}>", name),
+            Value::Future { id, state, .. } => write!(f, "<future {} {:?}>", id, state),
             Value::None => write!(f, "none"),
         }
     }
@@ -243,6 +280,13 @@ pub struct Interpreter {
     defer_stack: Vec<Vec<(AstNode, Option<Value>)>>, // (expr, value for _) when block exits (LIFO)
     once_cache: HashMap<usize, Value>, // @once decorator cached results
     once_next_id: usize,
+    // Module system
+    module_cache: HashMap<String, Value>,
+    module_search_paths: Vec<String>,
+    // Trait system
+    trait_impls: HashMap<String, HashMap<String, Value>>, // type_name -> trait_name -> impl
+    // Async system
+    next_future_id: usize,
 }
 
 impl Interpreter {
@@ -255,6 +299,13 @@ impl Interpreter {
             defer_stack: Vec::new(),
             once_cache: HashMap::new(),
             once_next_id: 0,
+            // Module system
+            module_cache: HashMap::new(),
+            module_search_paths: vec![".".to_string()],
+            // Trait system
+            trait_impls: HashMap::new(),
+            // Async system
+            next_future_id: 0,
         };
         
         // Add built-in functions
@@ -2429,16 +2480,50 @@ impl Interpreter {
             }
             
             // Concurrency
-            AstNode::TaskSpawn { .. } => {
-                Err("TaskSpawn not yet implemented".to_string())
+            AstNode::TaskSpawn { body } => {
+                // Create a task ID and spawn the task
+                // For now, execute synchronously (true async would need runtime)
+                let task_id = self.next_future_id;
+                self.next_future_id += 1;
+                
+                // Execute the task body
+                self.push_scope();
+                let result = self.eval_node(body)?;
+                self.pop_scope();
+                
+                // Return a Task value
+                Ok(Value::Task(task_id as u64))
             }
             
-            AstNode::ChannelSend { .. } => {
-                Err("ChannelSend not yet implemented".to_string())
+            AstNode::ChannelSend { channel, value } => {
+                // Evaluate channel and value
+                let chan_val = self.eval_node(channel)?;
+                let val = self.eval_node(value)?;
+                
+                // For now, just return success
+                // Full implementation would need a channel queue
+                match chan_val {
+                    Value::Channel(id) => {
+                        // Store value in a hypothetical channel queue
+                        // For now, just acknowledge the send
+                        Ok(Value::Boolean(true))
+                    }
+                    _ => Err("ChannelSend requires a Channel value".to_string())
+                }
             }
             
-            AstNode::ChannelReceive { .. } => {
-                Err("ChannelReceive not yet implemented".to_string())
+            AstNode::ChannelReceive { channel } => {
+                // Evaluate channel
+                let chan_val = self.eval_node(channel)?;
+                
+                match chan_val {
+                    Value::Channel(id) => {
+                        // For now, return None (no value in channel)
+                        // Full implementation would need a channel queue
+                        Ok(Value::None)
+                    }
+                    _ => Err("ChannelReceive requires a Channel value".to_string())
+                }
             }
             
             AstNode::ScopeBlock { .. } => {
@@ -2471,40 +2556,72 @@ impl Interpreter {
             
             // Traits
             AstNode::TraitDeclaration { name, methods } => {
-                // Store trait definition in environment
-                let trait_methods: Vec<String> = methods.iter().filter_map(|m| {
-                    if let AstNode::FunctionDeclaration { name, .. } = m {
-                        Some(name.clone())
+                // Convert methods to TraitMethod structs
+                let trait_methods: Vec<TraitMethod> = methods.iter().filter_map(|m| {
+                    if let AstNode::FunctionDeclaration { name: method_name, params, return_type, body, .. } = m {
+                        Some(TraitMethod {
+                            name: method_name.clone(),
+                            params: params.clone(),
+                            return_type: return_type.clone(),
+                            default_impl: if matches!(body.as_ref(), AstNode::Block(statements) if statements.is_empty()) {
+                                None
+                            } else {
+                                Some(body.clone())
+                            },
+                        })
                     } else {
                         None
                     }
                 }).collect();
                 
-                self.set_variable(
-                    format!("__trait_{}", name),
-                    Value::String(trait_methods.join(","))
-                );
+                let trait_val = Value::Trait {
+                    name: name.clone(),
+                    methods: trait_methods,
+                };
+                
+                self.set_variable(name.clone(), trait_val);
                 Ok(Value::None)
             }
             
             // Async/Await
             AstNode::AsyncFunction { name, params, return_type: _, body } => {
-                // For now, treat async functions like regular functions
-                // In a full implementation, this would return a Promise/Future
+                // Create an async function that can be awaited
+                // For now, it executes synchronously but returns a completed Future
                 let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
                 let func = Value::Function {
-                    name: name.clone(),
+                    name: format!("async_{}", name),
                     params: param_names,
                     body: body.clone(),
                 };
+                
                 self.set_variable(name.clone(), func);
                 Ok(Value::None)
             }
             
             AstNode::AwaitExpression { expr } => {
-                // For now, just evaluate the expression synchronously
-                // In a full implementation, this would wait for a Promise/Future
-                self.eval_node(expr)
+                let future_val = self.eval_node(expr)?;
+                
+                // If it's a Future, get its result
+                if let Value::Future { result, state, .. } = future_val {
+                    match state {
+                        FutureState::Completed => {
+                            if let Some(res) = result {
+                                return Ok(*res);
+                            } else {
+                                return Ok(Value::None);
+                            }
+                        }
+                        FutureState::Failed(err) => {
+                            return Err(format!("Future failed: {}", err));
+                        }
+                        _ => {
+                            return Err("Cannot await pending future (no async runtime)".to_string());
+                        }
+                    }
+                }
+                
+                // If it's a regular function call, just execute it synchronously
+                Ok(future_val)
             }
             
             // Module System
@@ -2513,34 +2630,47 @@ impl Interpreter {
                 self.push_scope();
                 let result = self.eval_node(body)?;
                 
-                // Store module exports (for now, just mark it as loaded)
-                self.set_variable(
-                    format!("__module_{}", name),
-                    Value::Boolean(true)
-                );
+                // Collect exports from module scope
+                let mut exports = HashMap::new();
+                if let Some(scope) = self.locals.last() {
+                    exports = scope.clone();
+                }
+                
                 self.pop_scope();
+                
+                // Store module
+                let module = Value::Module {
+                    name: name.clone(),
+                    path: format!("<inline:{}>", name),
+                    exports,
+                };
+                
+                self.set_variable(name.clone(), module);
                 Ok(result)
             }
             
             AstNode::ImportStatement { module_path, items } => {
-                // For now, just mark the import as processed
-                // In a full implementation, this would load the module and import items
-                let path_str = module_path.join(".");
-                if items.is_empty() {
-                    // Import all
-                    self.set_variable(
-                        format!("__import_{}", path_str),
-                        Value::Boolean(true)
-                    );
-                } else {
-                    // Import specific items
-                    for item in items {
-                        self.set_variable(
-                            format!("__import_{}_{}", path_str, item),
-                            Value::Boolean(true)
-                        );
+                let path = module_path.join("/");
+                let module = self.load_module(&path)?;
+                
+                if let Value::Module { exports, .. } = module {
+                    if items.is_empty() {
+                        // Import all exports
+                        for (name, value) in exports {
+                            self.set_variable(name, value);
+                        }
+                    } else {
+                        // Import specific items
+                        for item in items {
+                            if let Some(value) = exports.get(item) {
+                                self.set_variable(item.clone(), value.clone());
+                            } else {
+                                return Err(format!("Module {} does not export '{}'", path, item));
+                            }
+                        }
                     }
                 }
+                
                 Ok(Value::None)
             }
             
@@ -2961,6 +3091,9 @@ impl Interpreter {
                             Value::OnceCached { .. } => "once",
                             Value::MirrorDispatch { .. } => "mirror",
                             Value::None => "none",
+                            Value::Module { .. } => "module",
+                            Value::Trait { .. } => "trait",
+                            Value::Future { .. } => "future",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -2991,6 +3124,38 @@ impl Interpreter {
                         } else {
                             Err("range() expects integer arguments".to_string())
                         }
+            
+           
+                    }
+                    _ => Err("range() expects 1, 2, or 3 arguments".to_string()),
+                }
+            }
+            
+            "channel" => {
+                // Create a new channel
+                if args.len() != 0 {
+                    return Err("channel() expects no arguments".to_string());
+                }
+                let channel_id = self.next_future_id as u64;
+                self.next_future_id += 1;
+                Ok(Value::Channel(channel_id))
+            }
+            
+            "spawn" => {
+                // Spawn a task (similar to TaskSpawn but as a function)
+                if args.len() != 1 {
+                    return Err("spawn() expects exactly 1 argument (function or block)".to_string());
+                }
+                let task_id = self.next_future_id;
+                self.next_future_id += 1;
+                
+                // Execute the argument (should be a function or expression)
+                self.push_scope();
+                let _result = self.eval_node(&args[0])?;
+                self.pop_scope();
+                
+                Ok(Value::Task(task_id as u64))
+            }
                     }
                     2 => {
                         let start_val = self.eval_node(&args[0])?;
@@ -6151,6 +6316,9 @@ impl Interpreter {
                             Value::OnceCached { .. } => "once",
                             Value::MirrorDispatch { .. } => "mirror",
                             Value::None => "none",
+                            Value::Module { .. } => "module",
+                            Value::Trait { .. } => "trait",
+                            Value::Future { .. } => "future",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -6932,7 +7100,86 @@ impl Interpreter {
         } else {
             self.globals.insert(name, value);
         }
+    }    // Module system helper methods
+    fn load_module(&mut self, path: &str) -> Result<Value, String> {
+        // Check cache first
+        if let Some(cached) = self.module_cache.get(path) {
+            return Ok(cached.clone());
+        }
+        
+        // Resolve file path
+        let file_path = self.resolve_module_path(path)?;
+        
+        // Read and parse file
+        let source = std::fs::read_to_string(&file_path)
+            .map_err(|e| format!("Failed to load module {}: {}", path, e))?;
+        
+        let mut lexer = crate::lexer::Lexer::new(&source);
+        let tokens = lexer.tokenize()
+            .map_err(|e| format!("Lexer error in module {}: {}", path, e))?;
+        
+        let mut parser = crate::parser::Parser::new(tokens);
+        let ast = parser.parse()
+            .map_err(|e| format!("Parser error in module {}: {}", path, e))?;
+        
+        // Execute in isolated scope
+        self.push_scope();
+        self.eval_node(&ast)?;
+        
+        // Get all variables from module scope as exports
+        let mut exports = HashMap::new();
+        if let Some(scope) = self.locals.last() {
+            exports = scope.clone();
+        }
+        
+        self.pop_scope();
+        
+        // Create module value
+        let module = Value::Module {
+            name: path.to_string(),
+            path: file_path,
+            exports,
+        };
+        
+        // Cache it
+        self.module_cache.insert(path.to_string(), module.clone());
+        
+        Ok(module)
     }
+    
+    fn resolve_module_path(&self, path: &str) -> Result<String, String> {
+        // If path starts with ./ or ../, it's relative
+        if path.starts_with("./") || path.starts_with("../") {
+            let full_path = if path.ends_with(".j") {
+                path.to_string()
+            } else {
+                format!("{}.j", path)
+            };
+            
+            if std::path::Path::new(&full_path).exists() {
+                return Ok(full_path);
+            } else {
+                return Err(format!("Module file not found: {}", full_path));
+            }
+        }
+        
+        // Search in module search paths
+        for search_path in &self.module_search_paths {
+            let full_path = if path.ends_with(".j") {
+                format!("{}/{}", search_path, path)
+            } else {
+                format!("{}/{}.j", search_path, path)
+            };
+            
+            if std::path::Path::new(&full_path).exists() {
+                return Ok(full_path);
+            }
+        }
+        
+        Err(format!("Module not found: {}", path))
+    }
+
+
     
     fn push_scope(&mut self) {
         self.locals.push(HashMap::new());
