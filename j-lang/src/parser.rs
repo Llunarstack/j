@@ -327,6 +327,55 @@ pub enum AstNode {
         args: Vec<AstNode>,
     },
     
+    // Traits
+    TraitDeclaration {
+        name: String,
+        methods: Vec<AstNode>, // Method signatures (FunctionDeclaration without body)
+    },
+    
+    // Async/Await
+    AsyncFunction {
+        name: String,
+        params: Vec<(String, String)>,
+        return_type: Option<String>,
+        body: Box<AstNode>,
+    },
+    AwaitExpression {
+        expr: Box<AstNode>,
+    },
+    
+    // Module System
+    ModuleDeclaration {
+        name: String,
+        body: Box<AstNode>,
+    },
+    ImportStatement {
+        module_path: Vec<String>, // e.g., ["std", "io"]
+        items: Vec<String>,        // specific items to import, empty = import all
+    },
+    UseStatement {
+        path: Vec<String>,
+    },
+    
+    // Generics
+    GenericFunction {
+        name: String,
+        type_params: Vec<String>, // e.g., ["T", "U"]
+        params: Vec<(String, String)>,
+        return_type: Option<String>,
+        body: Box<AstNode>,
+    },
+    GenericClass {
+        name: String,
+        type_params: Vec<String>,
+        parent: Option<String>,
+        traits: Vec<String>,
+        fields: Vec<ClassField>,
+        methods: Vec<AstNode>,
+        static_fields: Vec<ClassField>,
+        static_methods: Vec<AstNode>,
+    },
+    
     // jnew_features: extensions, loops, security, enterprise, tooling
     ExtendType {
         target_type: String,
@@ -530,6 +579,41 @@ impl Parser {
         // Class declaration: class | name { ... }
         if self.match_token(&TokenType::Class) {
             return self.class_declaration();
+        }
+        
+        // Trait declaration: trait | name { methods }
+        if self.match_token(&TokenType::Trait) {
+            return self.trait_declaration();
+        }
+        
+        // Async function: async fn | name (params) > body
+        if self.match_token(&TokenType::Async) {
+            return self.async_function_declaration();
+        }
+        
+        // Await expression: await expr
+        if self.match_token(&TokenType::Await) {
+            return self.await_expression();
+        }
+        
+        // Module declaration: module | name { body }
+        if self.match_token(&TokenType::Module) {
+            return self.module_declaration();
+        }
+        
+        // Import statement: import std.io
+        if self.match_token(&TokenType::Import) {
+            return self.import_statement();
+        }
+        
+        // Use statement: use std.io.read
+        if self.match_token(&TokenType::Use) {
+            return self.use_statement();
+        }
+        
+        // Macro definition: macro | name (params) > body
+        if self.match_token(&TokenType::Macro) {
+            return self.macro_definition();
         }
 
         // jnew_features: extend type | T { ... }
@@ -2869,5 +2953,317 @@ impl Parser {
         }
         
         Ok(AstNode::StringInterpolation { parts })
+    }
+    
+    // ===== NEW ADVANCED FEATURE PARSERS =====
+    
+    fn trait_declaration(&mut self) -> Result<AstNode, String> {
+        self.consume(&TokenType::Pipe, "Expected '|' after 'trait'")?;
+        
+        let name = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected trait name".to_string()),
+        };
+        
+        self.consume(&TokenType::LeftBrace, "Expected '{' after trait name")?;
+        
+        let mut methods = Vec::new();
+        
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            if self.match_token(&TokenType::Newline) {
+                continue;
+            }
+            
+            // Parse method signature (fn without body)
+            if self.match_token(&TokenType::Fn) {
+                let method = self.function_declaration()?;
+                methods.push(method);
+            } else {
+                return Err("Expected method declaration in trait".to_string());
+            }
+            
+            self.match_token(&TokenType::Newline);
+        }
+        
+        self.consume(&TokenType::RightBrace, "Expected '}' after trait body")?;
+        
+        Ok(AstNode::TraitDeclaration { name, methods })
+    }
+    
+    fn async_function_declaration(&mut self) -> Result<AstNode, String> {
+        // async fn | name (params) > body
+        self.consume(&TokenType::Fn, "Expected 'fn' after 'async'")?;
+        self.consume(&TokenType::Pipe, "Expected '|' after 'async fn'")?;
+        
+        let name = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            TokenType::Test => "test".to_string(), // Handle 'test' keyword as function name
+            _ => return Err("Expected function name after 'async fn |'".to_string()),
+        };
+        
+        self.consume(&TokenType::LeftParen, "Expected '(' after function name")?;
+        
+        let mut params = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                let param_type = match &self.advance().token_type {
+                    TokenType::Str => "str".to_string(),
+                    TokenType::Int => "int".to_string(),
+                    TokenType::FloatType => "float".to_string(),
+                    TokenType::Bool => "bool".to_string(),
+                    TokenType::Identifier(name) => name.clone(),
+                    _ => return Err("Expected parameter type".to_string()),
+                };
+                
+                self.consume(&TokenType::Pipe, "Expected '|' after parameter type")?;
+                
+                let param_name = match &self.advance().token_type {
+                    TokenType::Identifier(name) => name.clone(),
+                    _ => return Err("Expected parameter name".to_string()),
+                };
+                
+                params.push((param_type, param_name));
+                
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after parameters")?;
+        
+        self.consume(&TokenType::Greater, "Expected '>' before function body")?;
+        
+        let body = if self.check(&TokenType::LeftBrace) {
+            self.block()?
+        } else {
+            self.expression()?
+        };
+        
+        Ok(AstNode::AsyncFunction {
+            name,
+            params,
+            return_type: None, // For now, async functions don't specify return type
+            body: Box::new(body),
+        })
+    }
+    
+    fn await_expression(&mut self) -> Result<AstNode, String> {
+        // await expression
+        let expr = self.primary()?;
+        Ok(AstNode::AwaitExpression {
+            expr: Box::new(expr),
+        })
+    }
+    
+    fn module_declaration(&mut self) -> Result<AstNode, String> {
+        // module | name { body }
+        self.consume(&TokenType::Pipe, "Expected '|' after 'module'")?;
+        
+        let name = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected module name".to_string()),
+        };
+        
+        self.consume(&TokenType::LeftBrace, "Expected '{' after module name")?;
+        
+        let mut statements = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            if self.match_token(&TokenType::Newline) {
+                continue;
+            }
+            statements.push(self.statement()?);
+        }
+        
+        self.consume(&TokenType::RightBrace, "Expected '}' after module body")?;
+        
+        Ok(AstNode::ModuleDeclaration {
+            name,
+            body: Box::new(AstNode::Block(statements)),
+        })
+    }
+    
+    fn import_statement(&mut self) -> Result<AstNode, String> {
+        // import std.io or import std.io.{read, write}
+        let mut module_path = Vec::new();
+        
+        loop {
+            match &self.advance().token_type {
+                TokenType::Identifier(name) => module_path.push(name.clone()),
+                _ => return Err("Expected module path".to_string()),
+            }
+            
+            if !self.match_token(&TokenType::Dot) {
+                break;
+            }
+        }
+        
+        let items = if self.match_token(&TokenType::Dot) {
+            self.consume(&TokenType::LeftBrace, "Expected '{' after '.'")?;
+            let mut items = Vec::new();
+            
+            loop {
+                match &self.advance().token_type {
+                    TokenType::Identifier(name) => items.push(name.clone()),
+                    _ => return Err("Expected item name".to_string()),
+                }
+                
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+            
+            self.consume(&TokenType::RightBrace, "Expected '}' after import items")?;
+            items
+        } else {
+            Vec::new() // Import all
+        };
+        
+        Ok(AstNode::ImportStatement { module_path, items })
+    }
+    
+    fn use_statement(&mut self) -> Result<AstNode, String> {
+        // use std.io.read
+        let mut path = Vec::new();
+        
+        loop {
+            match &self.advance().token_type {
+                TokenType::Identifier(name) => path.push(name.clone()),
+                _ => return Err("Expected path component".to_string()),
+            }
+            
+            if !self.match_token(&TokenType::Dot) {
+                break;
+            }
+        }
+        
+        Ok(AstNode::UseStatement { path })
+    }
+    
+    fn generic_function_declaration(&mut self) -> Result<AstNode, String> {
+        // fn | name<T, U> (params) > body
+        self.consume(&TokenType::Pipe, "Expected '|' after 'fn'")?;
+        
+        let name = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected function name".to_string()),
+        };
+        
+        // Parse type parameters: <T, U>
+        self.consume(&TokenType::Less, "Expected '<' for generic parameters")?;
+        let mut type_params = Vec::new();
+        
+        loop {
+            match &self.advance().token_type {
+                TokenType::Identifier(name) => type_params.push(name.clone()),
+                _ => return Err("Expected type parameter name".to_string()),
+            }
+            
+            if !self.match_token(&TokenType::Comma) {
+                break;
+            }
+        }
+        
+        self.consume(&TokenType::Greater, "Expected '>' after type parameters")?;
+        self.consume(&TokenType::LeftParen, "Expected '(' after function name")?;
+        
+        let mut params = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                let param_type = match &self.advance().token_type {
+                    TokenType::Str => "str".to_string(),
+                    TokenType::Int => "int".to_string(),
+                    TokenType::FloatType => "float".to_string(),
+                    TokenType::Bool => "bool".to_string(),
+                    TokenType::Identifier(name) => name.clone(),
+                    _ => return Err("Expected parameter type".to_string()),
+                };
+                
+                self.consume(&TokenType::Pipe, "Expected '|' after parameter type")?;
+                
+                let param_name = match &self.advance().token_type {
+                    TokenType::Identifier(name) => name.clone(),
+                    _ => return Err("Expected parameter name".to_string()),
+                };
+                
+                params.push((param_type, param_name));
+                
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after parameters")?;
+        
+        let return_type = if self.match_token(&TokenType::Arrow) {
+            match &self.advance().token_type {
+                TokenType::Str => Some("str".to_string()),
+                TokenType::Int => Some("int".to_string()),
+                TokenType::FloatType => Some("float".to_string()),
+                TokenType::Bool => Some("bool".to_string()),
+                TokenType::Identifier(name) => Some(name.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        
+        self.consume(&TokenType::Greater, "Expected '>' before function body")?;
+        
+        let body = if self.check(&TokenType::LeftBrace) {
+            self.block()?
+        } else {
+            self.expression()?
+        };
+        
+        Ok(AstNode::GenericFunction {
+            name,
+            type_params,
+            params,
+            return_type,
+            body: Box::new(body),
+        })
+    }
+    
+    fn macro_definition(&mut self) -> Result<AstNode, String> {
+        // macro | name (params) > body
+        self.consume(&TokenType::Pipe, "Expected '|' after 'macro'")?;
+        
+        let name = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected macro name".to_string()),
+        };
+        
+        self.consume(&TokenType::LeftParen, "Expected '(' after macro name")?;
+        
+        let mut params = Vec::new();
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                match &self.advance().token_type {
+                    TokenType::Identifier(name) => params.push(name.clone()),
+                    _ => return Err("Expected parameter name".to_string()),
+                }
+                
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after parameters")?;
+        self.consume(&TokenType::Greater, "Expected '>' before macro body")?;
+        
+        let body = if self.check(&TokenType::LeftBrace) {
+            self.block()?
+        } else {
+            self.expression()?
+        };
+        
+        Ok(AstNode::MacroDefinition {
+            name,
+            params,
+            body: Box::new(body),
+        })
     }
 }

@@ -32,7 +32,7 @@ pub enum TokenType {
     If, Else, Match, Case, While, Loop, For, In, Break, Continue,
     Defer, Converge,
     Return, Yield, Async, Await, Task, Gen,
-    Use, Mod, Let, Mut, Ref,
+    Use, Mod, Import, Module, Let, Mut, Ref,
     Try, Catch, Finally, Panic,
     Of, With, Cond, By, This, Self_,
     // jnew_features: extensions, loops, security, enterprise, tooling
@@ -114,6 +114,8 @@ pub enum TokenType {
     // Generator keywords
     GenType,        // gen<T> type
     YieldKeyword,   // yield
+    Generic,        // generic type parameters
+    TypeParam,      // <T> in generics
     
     // Additional operators
     Reverse,        // rev (reverse iteration)
@@ -846,6 +848,8 @@ impl Lexer {
             "gen" => TokenType::Gen,
             
             "use" => TokenType::Use,
+            "import" => TokenType::Import,
+            "module" => TokenType::Module,
             "mod" => TokenType::Mod,
             
             "try" => TokenType::Try,
