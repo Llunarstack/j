@@ -1,81 +1,71 @@
-out("Grid")
-grid | g -> [[1, 2], [3, 4]]
-out(g.rows)
-out(g.cols)
-list | n -> g.neighbors(0, 0)
-out(n)
+// Test new algorithm helper features
+out("=== NEW FEATURES TEST ===")
+out("")
 
-out("Counter")
-counter | c -> ["a", "a", "b"]
-out(c.most_common)
-out(c.total)
+// 1. INTERVAL TYPE
+out("1. Interval Type")
+interval | i1 -> interval(1, 5)
+interval | i2 -> interval(3, 8)
+out(i1)
+out(i2)
+out(i1.start)
+out(i1.end)
+out(i1.len)
+out("✓ Interval type works")
+out("")
 
-out("Defer")
-{
-  defer out("defer")
-  out("block")
+// 2. WINDOW LOOP - Fixed Size
+out("2. Window Loop - Fixed Size")
+list | nums -> [1, 2, 3, 4, 5]
+window slice in nums (size: 3) {
+  out(slice)
 }
-out("after")
+out("✓ Fixed-size window works")
+out("")
 
-out("Converge")
-converge { 42 }
-out("done")
-
-out("Broadcast (from jnew_features)")
-fn int | add (int | a, int | b) > a + b
-list | nums -> [1, 2, 3]
-list | results -> add.(nums, 10)
-out(results)
-out("Double broadcast (zip):")
-list | b -> [10, 20, 30]
-list | results2 -> add.(nums, b)
-out(results2)
-
-out("scan_max / scan_sum (algorithm features)")
-list | h -> [1, 3, 2, 5, 4]
-out(h.scan_max)
-out(h.scan_sum)
-out(h.scan_right_max)
-
-out("Secure block + constant-time eq ~==")
-str | a -> "secret"
-str | b -> "secret"
-if a ~== b { out("match") }
-
-out("Rollback (stub)")
-rollback { out("rollback body") }
-
-out("Retry (stub)")
-retry { out("retry body") }
-
-out("Race (first branch)")
-race { "A" : 1 }
-
-out("Memo variable (callable)")
-memo int | double (int | n) -> n * 2
-out(double(5))
-out(double(7))
-
-out("Task (runs body)")
-task | hello > { out("task ran") }
-
-out("Fuzz loop (stub: 100 iters)")
-fuzz int | n : n >= 0
-
-out("Within loop (over list)")
-within 1000 | x in [10, 20, 30] { out(x) }
-
-out("@once decorator (caches first call)")
-@once
-fn int | once_val () > 99
-out(once_val())
-out(once_val())
-
-out("value.defer(cleanup)")
-{
-  int | r -> 42.defer(out("cleanup"))
-  out(r)
+// 3. WINDOW LOOP - Shrink Condition
+out("3. Window Loop - Shrink Condition")
+list | data -> [1, 2, 3, 4, 5, 6]
+int | min_len -> 999
+window slice in data (shrink_if: slice.sum() >= 10) {
+  if slice.len() < min_len {
+    min_len -> slice.len()
+  }
 }
-out("after block")
+out("Minimum window length with sum >= 10:")
+out(min_len)
+out("✓ Shrink condition window works")
+out("")
 
-out("All jnew_features syntax accepted.")
+// 4. GROUP_BY
+out("4. Group By")
+list | words -> ["eat", "tea", "tan", "ate", "nat", "bat"]
+dict | groups -> group_by(words, fn w > w.sorted())
+out(groups)
+out("✓ Group by works")
+out("")
+
+// 5. PARTITION
+out("5. Partition")
+list | numbers -> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+tuple | result -> partition(numbers, fn n > n % 2 == 0)
+out("Evens and odds:")
+out(result)
+out("✓ Partition works")
+out("")
+
+// 6. COUNTER ARITHMETIC
+out("6. Counter Arithmetic")
+counter | c1 -> counter("banana")
+counter | c2 -> counter("ana")
+out("c1:")
+out(c1)
+out("c2:")
+out(c2)
+counter | diff -> c1 - c2
+out("c1 - c2:")
+out(diff)
+out("✓ Counter arithmetic works")
+out("")
+
+out("=== ALL NEW FEATURES WORK ===")

@@ -1,6 +1,7 @@
 use crate::lexer::{Token, TokenType};
 use crate::error::JError;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassField {
     pub name: String,
@@ -11,6 +12,7 @@ pub struct ClassField {
     pub is_static: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
     // Literals
@@ -446,14 +448,29 @@ pub enum AstNode {
         name: String,
         fields: Vec<(String, u32)>,
     },
-    FloodLoop {
-        start: Box<AstNode>,
-        body: Box<AstNode>,
-    },
+    
+    // New algorithm helper features
     WindowLoop {
         var: String,
         iterable: Box<AstNode>,
+        size: Option<Box<AstNode>>,
         shrink_condition: Option<Box<AstNode>>,
+        body: Box<AstNode>,
+    },
+    IntervalLiteral {
+        start: Box<AstNode>,
+        end: Box<AstNode>,
+    },
+    GroupBy {
+        collection: Box<AstNode>,
+        key_fn: Box<AstNode>,
+    },
+    Partition {
+        collection: Box<AstNode>,
+        predicate: Box<AstNode>,
+    },
+    FloodLoop {
+        start: Box<AstNode>,
         body: Box<AstNode>,
     },
     SolverBlock {
@@ -502,6 +519,7 @@ pub struct Decorator {
     pub args: Vec<AstNode>, // Arguments for parameterized decorators like @retry(3)
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     Literal(AstNode),
@@ -512,6 +530,7 @@ pub enum Pattern {
     Tuple(Vec<Pattern>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add, Subtract, Multiply, Divide, Modulo, Power,
@@ -1032,8 +1051,25 @@ impl Parser {
         let mut params = Vec::new();
         if !self.check(&TokenType::RightParen) {
             loop {
-                let param_type = self.advance().lexeme.clone();
+                let param_type = match &self.advance().token_type {
+                    TokenType::Str => "str".to_string(),
+                    TokenType::Int => "int".to_string(),
+                    TokenType::FloatType => "float".to_string(),
+                    TokenType::Bool => "bool".to_string(),
+                    TokenType::List => "list".to_string(),
+                    TokenType::Dict => "dict".to_string(),
+                    TokenType::Tuple => "tuple".to_string(),
+                    TokenType::Vec => "vec".to_string(),
+                    TokenType::Mat => "mat".to_string(),
+                    TokenType::Set => "set".to_string(),
+                    TokenType::Counter => "counter".to_string(),
+                    TokenType::CharType => "char".to_string(),
+                    TokenType::Identifier(name) => name.clone(),
+                    _ => return Err("Expected parameter type".to_string()),
+                };
+                
                 self.consume(&TokenType::Pipe, "Expected '|' after parameter type")?;
+                
                 let param_name = match &self.advance().token_type {
                     TokenType::Identifier(name) => name.clone(),
                     _ => return Err("Expected parameter name".to_string()),
@@ -2389,7 +2425,7 @@ impl Parser {
         };
         self.consume(&TokenType::LeftBrace, "Expected '{'")?;
         let mut deps = Vec::new();
-        let mut fields = Vec::new();
+        let fields = Vec::new();
         let mut methods = Vec::new();
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
             if self.match_token(&TokenType::Newline) { continue; }
@@ -2531,14 +2567,40 @@ impl Parser {
         self.advance();
         self.consume(&TokenType::In, "Expected 'in'")?;
         let iterable = Box::new(self.expression()?);
-        let shrink_condition = if self.check(&TokenType::LeftParen) {
+        
+        // Parse optional (size: N) or (shrink_if: condition)
+        let mut size = None;
+        let mut shrink_condition = None;
+        
+        if self.check(&TokenType::LeftParen) {
             self.advance();
-            let cond = self.expression()?;
+            // Check for size: or shrink_if:
+            if let TokenType::Identifier(keyword) = &self.peek().token_type {
+                match keyword.as_str() {
+                    "size" => {
+                        self.advance();
+                        self.consume(&TokenType::Colon, "Expected ':' after 'size'")?;
+                        size = Some(Box::new(self.expression()?));
+                    }
+                    "shrink_if" => {
+                        self.advance();
+                        self.consume(&TokenType::Colon, "Expected ':' after 'shrink_if'")?;
+                        shrink_condition = Some(Box::new(self.expression()?));
+                    }
+                    _ => return Err(format!("Unknown window option: {}", keyword)),
+                }
+            }
             self.consume(&TokenType::RightParen, "Expected ')'")?;
-            Some(Box::new(cond))
-        } else { None };
+        }
+        
         let body = self.block()?;
-        Ok(AstNode::WindowLoop { var, iterable, shrink_condition, body: Box::new(body) })
+        Ok(AstNode::WindowLoop { 
+            var, 
+            iterable, 
+            size,
+            shrink_condition, 
+            body: Box::new(body) 
+        })
     }
 
     fn solver_block(&mut self) -> Result<AstNode, String> {
@@ -2719,6 +2781,7 @@ impl Parser {
         }
     }
     
+    #[allow(dead_code)]
     fn check_ahead_n(&self, n: usize, token_type: &TokenType) -> bool {
         if self.current + n >= self.tokens.len() {
             false
@@ -3140,6 +3203,7 @@ impl Parser {
         Ok(AstNode::UseStatement { path })
     }
     
+    #[allow(dead_code)]
     fn generic_function_declaration(&mut self) -> Result<AstNode, String> {
         // fn | name<T, U> (params) > body
         self.consume(&TokenType::Pipe, "Expected '|' after 'fn'")?;
