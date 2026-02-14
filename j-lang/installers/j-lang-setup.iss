@@ -81,11 +81,9 @@ Name: "docs"; Description: "Documentation"; Types: full
 Name: "stdlib"; Description: "Standard Library"; Types: full minimal
 
 [Tasks]
-Name: "addtopath"; Description: "Add J to the system PATH environment variable"; GroupDescription: "Environment:"; Flags: checkedonce
+Name: "addtopath"; Description: "Add J to the system PATH environment variable (recommended)"; GroupDescription: "Environment:"; Flags: checkedonce
 Name: "addallusers"; Description: "Add to PATH for all users (requires admin)"; GroupDescription: "Environment:"; Flags: unchecked; Check: IsAdminInstallMode
-Name: "fileassoc"; Description: "Associate .j files with J"; GroupDescription: "File Associations:"; Flags: checkedonce
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional Shortcuts:"; Flags: unchecked
-Name: "quicklaunch"; Description: "Create a Quick Launch shortcut"; GroupDescription: "Additional Shortcuts:"; Flags: unchecked; OnlyBelowVersion: 6.1; Check: not IsAdminInstallMode
+Name: "fileassoc"; Description: "Associate .j files with J (recommended)"; GroupDescription: "File Associations:"; Flags: checkedonce
 
 [Files]
 ; Core executable
@@ -108,18 +106,12 @@ Source: "..\..\CONTRIBUTING.md"; DestDir: "{app}"; DestName: "CONTRIBUTING.txt";
 Source: "..\..\CHANGELOG.md"; DestDir: "{app}"; DestName: "CHANGELOG.txt"; Flags: ignoreversion; Components: docs
 
 [Icons]
-; Start Menu
-Name: "{group}\J REPL"; Filename: "{app}\{#MyAppExeName}"; Parameters: "repl"; Comment: "Start J Interactive REPL"; IconFilename: "{app}\J_lang.ico"
+; Start Menu - Like Python, just documentation and tools
 Name: "{group}\J Documentation"; Filename: "{app}\README.txt"; Comment: "View J Documentation"
 Name: "{group}\Example Programs"; Filename: "{app}\examples"; Comment: "Browse Example Programs"
 Name: "{group}\Standard Library"; Filename: "{app}\lib"; Comment: "Browse Standard Library"
+Name: "{group}\Command Prompt"; Filename: "{cmd}"; WorkingDir: "{userdocs}"; Comment: "Open Command Prompt with J in PATH"; IconFilename: "{app}\J_lang.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; Comment: "Uninstall J Programming Language"
-
-; Desktop
-Name: "{autodesktop}\J REPL"; Filename: "{app}\{#MyAppExeName}"; Parameters: "repl"; Comment: "Start J Interactive REPL"; IconFilename: "{app}\J_lang.ico"; Tasks: desktopicon
-
-; Quick Launch
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\J REPL"; Filename: "{app}\{#MyAppExeName}"; Parameters: "repl"; IconFilename: "{app}\J_lang.ico"; Tasks: quicklaunch
 
 [Registry]
 ; File Association
@@ -148,7 +140,7 @@ Root: HKCU; Subkey: "Software\{#MyAppPublisher}\{#MyAppName}"; ValueType: string
 ; Post-installation actions
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--version"; StatusMsg: "Verifying installation..."; Flags: runhidden waituntilterminated
 Filename: "{app}\README.txt"; Description: "View the README file"; Flags: postinstall shellexec skipifsilent unchecked
-Filename: "{app}\{#MyAppExeName}"; Parameters: "repl"; Description: "Launch J REPL"; Flags: postinstall nowait skipifsilent unchecked
+Filename: "{app}\examples"; Description: "Open examples folder"; Flags: postinstall shellexec skipifsilent unchecked
 
 [UninstallRun]
 ; Cleanup before uninstall
