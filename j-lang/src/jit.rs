@@ -13,12 +13,14 @@ use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::interpreter::Interpreter;
 
+#[allow(dead_code)]
 pub struct JitCompiler {
     interpreter: Interpreter,
     file_cache: HashMap<PathBuf, (SystemTime, String)>,
     hot_reload: bool,
 }
 
+#[allow(dead_code)]
 impl JitCompiler {
     pub fn new() -> Self {
         Self {

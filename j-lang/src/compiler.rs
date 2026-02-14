@@ -235,10 +235,12 @@ int main() {
         }
     }
     
+    #[allow(dead_code)]
     pub fn set_optimization_level(&mut self, level: u8) {
         self.optimization_level = level.min(3);
     }
     
+    #[allow(dead_code)]
     pub fn set_target(&mut self, target: String) {
         self.target_triple = target;
     }

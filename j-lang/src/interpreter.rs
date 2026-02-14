@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fmt;
 
 // Define these types before Value enum since Value references them
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraitMethod {
     pub name: String,
@@ -13,6 +14,7 @@ pub struct TraitMethod {
     pub default_impl: Option<Box<AstNode>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum FutureState {
     Pending,
@@ -22,6 +24,7 @@ pub enum FutureState {
 }
 
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),
@@ -114,6 +117,8 @@ pub enum Value {
         state: FutureState,
         result: Option<Box<Value>>,
     },
+    /// Interval type for range problems (start, end)
+    Interval(i64, i64),
     None,
 }
 
@@ -267,6 +272,7 @@ impl fmt::Display for Value {
             Value::Module { name, .. } => write!(f, "<module {}>", name),
             Value::Trait { name, .. } => write!(f, "<trait {}>", name),
             Value::Future { id, state, .. } => write!(f, "<future {} {:?}>", id, state),
+            Value::Interval(start, end) => write!(f, "interval({}, {})", start, end),
             Value::None => write!(f, "none"),
         }
     }
@@ -284,6 +290,7 @@ pub struct Interpreter {
     module_cache: HashMap<String, Value>,
     module_search_paths: Vec<String>,
     // Trait system
+    #[allow(dead_code)]
     trait_impls: HashMap<String, HashMap<String, Value>>, // type_name -> trait_name -> impl
     // Async system
     next_future_id: usize,
@@ -1372,6 +1379,24 @@ impl Interpreter {
                             }
                             "len" | "length" | "size" => Ok(Value::Integer(counter.len() as i64)),
                             _ => Err(format!("Counter method '{}' not found", field)),
+                        }
+                    }
+                    Value::Interval(start, end) => {
+                        match field.as_str() {
+                            "start" => Ok(Value::Integer(start)),
+                            "end" => Ok(Value::Integer(end)),
+                            "len" | "length" | "size" => Ok(Value::Integer((end - start).abs())),
+                            "overlaps" => {
+                                // Returns a callable that checks if another interval overlaps
+                                return Err("interval.overlaps() requires another interval argument".to_string());
+                            }
+                            "merge" => {
+                                return Err("interval.merge() requires another interval argument".to_string());
+                            }
+                            "contains" => {
+                                return Err("interval.contains() requires a value argument".to_string());
+                            }
+                            _ => Err(format!("Interval method '{}' not found", field)),
                         }
                     }
                     Value::Grid(grid) => {
@@ -2488,7 +2513,7 @@ impl Interpreter {
                 
                 // Execute the task body
                 self.push_scope();
-                let result = self.eval_node(body)?;
+                let _result = self.eval_node(body)?;
                 self.pop_scope();
                 
                 // Return a Task value
@@ -2498,12 +2523,12 @@ impl Interpreter {
             AstNode::ChannelSend { channel, value } => {
                 // Evaluate channel and value
                 let chan_val = self.eval_node(channel)?;
-                let val = self.eval_node(value)?;
+                let _val = self.eval_node(value)?;
                 
                 // For now, just return success
                 // Full implementation would need a channel queue
                 match chan_val {
-                    Value::Channel(id) => {
+                    Value::Channel(_id) => {
                         // Store value in a hypothetical channel queue
                         // For now, just acknowledge the send
                         Ok(Value::Boolean(true))
@@ -2517,7 +2542,7 @@ impl Interpreter {
                 let chan_val = self.eval_node(channel)?;
                 
                 match chan_val {
-                    Value::Channel(id) => {
+                    Value::Channel(_id) => {
                         // For now, return None (no value in channel)
                         // Full implementation would need a channel queue
                         Ok(Value::None)
@@ -2832,21 +2857,163 @@ impl Interpreter {
             AstNode::EnvSchema { name: _, fields: _ } => Ok(Value::None),
             AstNode::PacketDecl { name: _, fields: _ } => Ok(Value::None),
             AstNode::FloodLoop { start: _, body } => self.eval_node(body),
-            AstNode::WindowLoop { var, iterable, shrink_condition: _, body } => {
+            AstNode::WindowLoop { var, iterable, size, shrink_condition, body } => {
                 let list = self.eval_node(iterable)?;
                 if let Value::List(items) = list {
                     self.push_scope();
                     let mut last = Value::None;
-                    for i in 0..items.len() {
-                        let slice: Vec<Value> = items[..=i].to_vec();
-                        self.set_variable(var.clone(), Value::List(slice));
-                        last = self.eval_node(body)?;
+                    
+                    // Determine window size
+                    let window_size = if let Some(size_expr) = size {
+                        match self.eval_node(size_expr)? {
+                            Value::Integer(s) => s as usize,
+                            _ => return Err("Window size must be an integer".to_string()),
+                        }
+                    } else {
+                        1 // Default: growing window
+                    };
+                    
+                    if let Some(shrink_cond) = shrink_condition {
+                        // Sliding window with shrink condition
+                        let mut left = 0;
+                        let mut right = 0;
+                        
+                        while right < items.len() {
+                            // Expand window
+                            right += 1;
+                            let slice: Vec<Value> = items[left..right].to_vec();
+                            self.set_variable(var.clone(), Value::List(slice.clone()));
+                            
+                            // Check shrink condition
+                            let should_shrink = match self.eval_node(shrink_cond)? {
+                                Value::Boolean(b) => b,
+                                _ => false,
+                            };
+                            
+                            // Shrink window if condition met
+                            while should_shrink && left < right {
+                                left += 1;
+                                let slice: Vec<Value> = items[left..right].to_vec();
+                                self.set_variable(var.clone(), Value::List(slice));
+                                
+                                let still_shrink = match self.eval_node(shrink_cond)? {
+                                    Value::Boolean(b) => b,
+                                    _ => false,
+                                };
+                                if !still_shrink {
+                                    break;
+                                }
+                            }
+                            
+                            last = self.eval_node(body)?;
+                        }
+                    } else if window_size == 1 {
+                        // Growing window (original behavior)
+                        for i in 0..items.len() {
+                            let slice: Vec<Value> = items[..=i].to_vec();
+                            self.set_variable(var.clone(), Value::List(slice));
+                            last = self.eval_node(body)?;
+                        }
+                    } else {
+                        // Fixed-size sliding window
+                        for i in 0..=(items.len().saturating_sub(window_size)) {
+                            let slice: Vec<Value> = items[i..i+window_size].to_vec();
+                            self.set_variable(var.clone(), Value::List(slice));
+                            last = self.eval_node(body)?;
+                        }
                     }
+                    
                     self.pop_scope();
                     Ok(last)
-                } else { Ok(Value::None) }
+                } else { 
+                    Err("window loop requires a list".to_string())
+                }
             }
             AstNode::SolverBlock { name: _, options: _, body } => self.eval_node(body),
+            
+            // New algorithm helper nodes
+            AstNode::IntervalLiteral { start, end } => {
+                let start_val = self.eval_node(start)?;
+                let end_val = self.eval_node(end)?;
+                match (start_val, end_val) {
+                    (Value::Integer(s), Value::Integer(e)) => Ok(Value::Interval(s, e)),
+                    _ => Err("Interval requires integer start and end".to_string()),
+                }
+            }
+            
+            AstNode::GroupBy { collection, key_fn } => {
+                let coll = self.eval_node(collection)?;
+                if let Value::List(items) = coll {
+                    let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
+                    
+                    for item in items {
+                        // Call the key function with the item
+                        let key_val = match self.eval_node(key_fn)? {
+                            Value::Function { params, body, .. } => {
+                                if params.len() != 1 {
+                                    return Err("group_by key function must take exactly 1 parameter".to_string());
+                                }
+                                self.push_scope();
+                                self.set_variable(params[0].clone(), item.clone());
+                                let result = self.eval_node(&body)?;
+                                self.pop_scope();
+                                result
+                            }
+                            _ => return Err("group_by requires a function as key".to_string()),
+                        };
+                        
+                        // Convert key to string
+                        let key_str = key_val.to_string();
+                        groups.entry(key_str).or_insert_with(Vec::new).push(item);
+                    }
+                    
+                    // Convert to dict of lists
+                    let mut result = HashMap::new();
+                    for (key, values) in groups {
+                        result.insert(key, Value::List(values));
+                    }
+                    Ok(Value::Dict(result))
+                } else {
+                    Err("group_by requires a list".to_string())
+                }
+            }
+            
+            AstNode::Partition { collection, predicate } => {
+                let coll = self.eval_node(collection)?;
+                if let Value::List(items) = coll {
+                    let mut true_items = Vec::new();
+                    let mut false_items = Vec::new();
+                    
+                    for item in items {
+                        // Call the predicate function with the item
+                        let pred_result = match self.eval_node(predicate)? {
+                            Value::Function { params, body, .. } => {
+                                if params.len() != 1 {
+                                    return Err("partition predicate must take exactly 1 parameter".to_string());
+                                }
+                                self.push_scope();
+                                self.set_variable(params[0].clone(), item.clone());
+                                let result = self.eval_node(&body)?;
+                                self.pop_scope();
+                                result
+                            }
+                            _ => return Err("partition requires a function as predicate".to_string()),
+                        };
+                        
+                        match pred_result {
+                            Value::Boolean(true) => true_items.push(item),
+                            Value::Boolean(false) => false_items.push(item),
+                            _ => return Err("partition predicate must return a boolean".to_string()),
+                        }
+                    }
+                    
+                    // Return tuple of (true_items, false_items)
+                    Ok(Value::Tuple(vec![Value::List(true_items), Value::List(false_items)]))
+                } else {
+                    Err("partition requires a list".to_string())
+                }
+            }
+            
             AstNode::DeferAttach { resource, cleanup } => {
                 let resource_val = self.eval_node(resource)?;
                 if let Some(frame) = self.defer_stack.last_mut() {
@@ -3094,6 +3261,7 @@ impl Interpreter {
                             Value::Module { .. } => "module",
                             Value::Trait { .. } => "trait",
                             Value::Future { .. } => "future",
+                            Value::Interval(_, _) => "interval",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -3111,25 +3279,6 @@ impl Interpreter {
                 }
             }
             
-            "range" => {
-                match args.len() {
-                    1 => {
-                        let end_val = self.eval_node(&args[0])?;
-                        if let Value::Integer(end) = end_val {
-                            let mut range = Vec::new();
-                            for i in 0..end {
-                                range.push(Value::Integer(i));
-                            }
-                            Ok(Value::List(range))
-                        } else {
-                            Err("range() expects integer arguments".to_string())
-                        }
-            
-           
-                    }
-                    _ => Err("range() expects 1, 2, or 3 arguments".to_string()),
-                }
-            }
             
             "channel" => {
                 // Create a new channel
@@ -3156,6 +3305,20 @@ impl Interpreter {
                 
                 Ok(Value::Task(task_id as u64))
             }
+            
+            "range" => {
+                match args.len() {
+                    1 => {
+                        let end_val = self.eval_node(&args[0])?;
+                        if let Value::Integer(end) = end_val {
+                            let mut range = Vec::new();
+                            for i in 0..end {
+                                range.push(Value::Integer(i));
+                            }
+                            Ok(Value::List(range))
+                        } else {
+                            Err("range() expects integer argument".to_string())
+                        }
                     }
                     2 => {
                         let start_val = self.eval_node(&args[0])?;
@@ -3188,6 +3351,20 @@ impl Interpreter {
                         }
                     }
                     _ => Err("range() expects 1, 2, or 3 arguments".to_string()),
+                }
+            }
+            
+            "interval" => {
+                if args.len() != 2 {
+                    return Err("interval() expects exactly 2 arguments (start, end)".to_string());
+                }
+                let start_val = self.eval_node(&args[0])?;
+                let end_val = self.eval_node(&args[1])?;
+                match (start_val, end_val) {
+                    (Value::Integer(start), Value::Integer(end)) => {
+                        Ok(Value::Interval(start, end))
+                    }
+                    _ => Err("interval() expects integer arguments".to_string()),
                 }
             }
             
@@ -3336,6 +3513,89 @@ impl Interpreter {
                         Ok(Value::Vector(vec))
                     }
                     _ => Err("sort() can only be called on lists or vectors".to_string()),
+                }
+            }
+            
+            "group_by" => {
+                if args.len() != 2 {
+                    return Err("group_by() expects exactly 2 arguments (list, key_function)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let key_fn = self.eval_node(&args[1])?;
+                
+                if let Value::List(items) = list_val {
+                    let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
+                    
+                    for item in items {
+                        // Call the key function with the item
+                        let key_val = match &key_fn {
+                            Value::Function { params, body, .. } => {
+                                if params.len() != 1 {
+                                    return Err("group_by key function must take exactly 1 parameter".to_string());
+                                }
+                                self.push_scope();
+                                self.set_variable(params[0].clone(), item.clone());
+                                let result = self.eval_node(body)?;
+                                self.pop_scope();
+                                result
+                            }
+                            _ => return Err("group_by requires a function as second argument".to_string()),
+                        };
+                        
+                        // Convert key to string
+                        let key_str = key_val.to_string();
+                        groups.entry(key_str).or_insert_with(Vec::new).push(item);
+                    }
+                    
+                    // Convert to dict of lists
+                    let mut result = HashMap::new();
+                    for (key, values) in groups {
+                        result.insert(key, Value::List(values));
+                    }
+                    Ok(Value::Dict(result))
+                } else {
+                    Err("group_by requires a list as first argument".to_string())
+                }
+            }
+            
+            "partition" => {
+                if args.len() != 2 {
+                    return Err("partition() expects exactly 2 arguments (list, predicate)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let predicate = self.eval_node(&args[1])?;
+                
+                if let Value::List(items) = list_val {
+                    let mut true_items = Vec::new();
+                    let mut false_items = Vec::new();
+                    
+                    for item in items {
+                        // Call the predicate function with the item
+                        let pred_result = match &predicate {
+                            Value::Function { params, body, .. } => {
+                                if params.len() != 1 {
+                                    return Err("partition predicate must take exactly 1 parameter".to_string());
+                                }
+                                self.push_scope();
+                                self.set_variable(params[0].clone(), item.clone());
+                                let result = self.eval_node(body)?;
+                                self.pop_scope();
+                                result
+                            }
+                            _ => return Err("partition requires a function as second argument".to_string()),
+                        };
+                        
+                        match pred_result {
+                            Value::Boolean(true) => true_items.push(item),
+                            Value::Boolean(false) => false_items.push(item),
+                            _ => return Err("partition predicate must return a boolean".to_string()),
+                        }
+                    }
+                    
+                    // Return tuple of (true_items, false_items)
+                    Ok(Value::Tuple(vec![Value::List(true_items), Value::List(false_items)]))
+                } else {
+                    Err("partition requires a list as first argument".to_string())
                 }
             }
             
@@ -5376,48 +5636,6 @@ impl Interpreter {
                 }
             }
             
-            "group_by" => {
-                if args.len() != 2 {
-                    return Err("group_by() expects exactly 2 arguments".to_string());
-                }
-                let list_val = self.eval_node(&args[0])?;
-                let key_func = match &args[1] {
-                    AstNode::Identifier(name) => name.clone(),
-                    _ => return Err("group_by() expects a function as second argument".to_string()),
-                };
-                
-                match list_val {
-                    Value::List(list) => {
-                        let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
-                        
-                        for item in list {
-                            // Set the item as _ for the key function
-                            self.set_variable("_".to_string(), item.clone());
-                            let key_result = self.call_function(&key_func, &[])?;
-                            
-                            let key = match key_result {
-                                Value::String(s) => s,
-                                Value::Integer(i) => i.to_string(),
-                                Value::Float(f) => f.to_string(),
-                                Value::Boolean(b) => b.to_string(),
-                                _ => return Err("group_by() key function must return a string-convertible value".to_string()),
-                            };
-                            
-                            groups.entry(key).or_insert_with(Vec::new).push(item);
-                        }
-                        
-                        // Convert to dict
-                        let mut result = HashMap::new();
-                        for (key, values) in groups {
-                            result.insert(key, Value::List(values));
-                        }
-                        
-                        Ok(Value::Dict(result))
-                    }
-                    _ => Err("group_by() can only be called on lists".to_string()),
-                }
-            }
-            
             // Additional collection functions
             "take" => {
                 if args.len() != 2 {
@@ -5481,38 +5699,6 @@ impl Interpreter {
                         Ok(Value::List(result))
                     }
                     _ => Err("chunk() expects list and integer arguments".to_string()),
-                }
-            }
-            
-            "partition" => {
-                if args.len() != 2 {
-                    return Err("partition() expects exactly 2 arguments".to_string());
-                }
-                let list_val = self.eval_node(&args[0])?;
-                let predicate = match &args[1] {
-                    AstNode::Identifier(name) => name.clone(),
-                    _ => return Err("partition() expects a function as second argument".to_string()),
-                };
-                
-                match list_val {
-                    Value::List(list) => {
-                        let mut true_items = Vec::new();
-                        let mut false_items = Vec::new();
-                        
-                        for item in list {
-                            self.set_variable("_".to_string(), item.clone());
-                            let result = self.call_function(&predicate, &[])?;
-                            
-                            if self.is_truthy(&result) {
-                                true_items.push(item);
-                            } else {
-                                false_items.push(item);
-                            }
-                        }
-                        
-                        Ok(Value::Tuple(vec![Value::List(true_items), Value::List(false_items)]))
-                    }
-                    _ => Err("partition() can only be called on lists".to_string()),
                 }
             }
             
@@ -6319,6 +6505,7 @@ impl Interpreter {
                             Value::Module { .. } => "module",
                             Value::Trait { .. } => "trait",
                             Value::Future { .. } => "future",
+                            Value::Interval(_, _) => "interval",
                 };
                 Ok(Value::String(type_name.to_string()))
             }

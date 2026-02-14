@@ -1,6 +1,7 @@
 
 use crate::error::JError;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Literals
@@ -45,7 +46,7 @@ pub enum TokenType {
     Triple, Shield, Deterministic, Audit, Layout, Fixed, Sequence,
     Pure, Effect, Invariant, View,
     Constraint, Solver, Window, Flood,
-    Ignite,
+    Ignite, Interval,
     ConstantTimeEq,  // ~== operator
     Tilde,           // ~ (single)
     
@@ -715,6 +716,7 @@ impl Lexer {
             "graph" => TokenType::Graph,
             "tree" => TokenType::Tree,
             "grid" => TokenType::Grid,
+            "interval" => TokenType::Interval,
             "char" => TokenType::CharType,
             "emoji" => TokenType::EmojiType,
             "ascii" => TokenType::Ascii,

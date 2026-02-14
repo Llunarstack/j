@@ -6,6 +6,7 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 // Runtime system for J language
 // Handles memory management, concurrency, and built-in functions
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum RuntimeValue {
     Integer(i64),
@@ -19,12 +20,14 @@ pub enum RuntimeValue {
     None,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TaskHandle {
     pub id: usize,
     pub status: TaskStatus,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum TaskStatus {
     Running,
@@ -32,6 +35,7 @@ pub enum TaskStatus {
     Failed(String),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ChannelHandle {
     pub id: usize,
@@ -39,6 +43,7 @@ pub struct ChannelHandle {
     pub receiver: Arc<Mutex<Receiver<RuntimeValue>>>,
 }
 
+#[allow(dead_code)]
 pub struct Runtime {
     tasks: HashMap<usize, TaskHandle>,
     channels: HashMap<usize, ChannelHandle>,
@@ -47,6 +52,7 @@ pub struct Runtime {
     global_vars: Arc<Mutex<HashMap<String, RuntimeValue>>>,
 }
 
+#[allow(dead_code)]
 impl Runtime {
     pub fn new() -> Self {
         Self {
@@ -269,6 +275,7 @@ impl Default for Runtime {
 }
 
 // Memory management utilities
+#[allow(dead_code)]
 pub struct Arena {
     blocks: Vec<Vec<u8>>,
     current_block: usize,
@@ -276,6 +283,7 @@ pub struct Arena {
     block_size: usize,
 }
 
+#[allow(dead_code)]
 impl Arena {
     pub fn new(block_size: usize) -> Self {
         Self {
@@ -309,11 +317,13 @@ impl Arena {
 }
 
 // Garbage collector (simplified mark-and-sweep)
+#[allow(dead_code)]
 pub struct GarbageCollector {
     objects: Vec<RuntimeValue>,
     marked: Vec<bool>,
 }
 
+#[allow(dead_code)]
 impl GarbageCollector {
     pub fn new() -> Self {
         Self {

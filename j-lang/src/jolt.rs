@@ -42,6 +42,7 @@ impl Default for JoltManifest {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct JoltPackage {
     pub name: String,
@@ -50,6 +51,7 @@ pub struct JoltPackage {
     pub manifest: JoltManifest,
 }
 
+#[allow(dead_code)]
 pub struct JoltManager {
     pub registry_url: String,
     pub cache_dir: PathBuf,

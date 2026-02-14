@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct JError {
     pub kind: ErrorKind,
@@ -13,6 +14,7 @@ pub struct JError {
     pub solution: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     // Lexer errors
@@ -65,6 +67,7 @@ impl JError {
         self
     }
     
+    #[allow(dead_code)]
     pub fn with_source(mut self, source_line: String) -> Self {
         self.source_line = Some(source_line);
         self
@@ -118,6 +121,7 @@ impl JError {
         error
     }
     
+    #[allow(dead_code)]
     pub fn type_error(expected: &str, got: &str, line: usize, column: usize) -> Self {
         let mut error = Self::new(
             ErrorKind::TypeError,
@@ -142,6 +146,7 @@ impl JError {
         error
     }
     
+    #[allow(dead_code)]
     pub fn wrong_argument_count(func_name: &str, expected: usize, got: usize, line: usize, column: usize) -> Self {
         let mut error = Self::new(
             ErrorKind::WrongArgumentCount,
@@ -238,6 +243,7 @@ impl JError {
         error
     }
     
+    #[allow(dead_code)]
     pub fn invalid_syntax(context: &str, line: usize, column: usize) -> Self {
         let mut error = Self::new(
             ErrorKind::InvalidSyntax,
