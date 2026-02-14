@@ -1,282 +1,157 @@
-// J Language Installer - Windows Native Executable
-// Compile with Visual Studio: cl installer.cpp /Fe:j-installer.exe
-
 #include <windows.h>
 #include <shlobj.h>
 #include <iostream>
 #include <string>
 #include <filesystem>
-#include <fstream>
+#include <vector>
 
 namespace fs = std::filesystem;
 
-// Function to get Local AppData path
-std::wstring GetLocalAppDataPath() {
-    wchar_t path[MAX_PATH];
-    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, path))) {
-        return std::wstring(path);
-    }
-    return L"";
-}
+// Link with system libraries
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "user32.lib")
 
-// Function to add to PATH
-bool AddToPath(const std::wstring& pathToAdd) {
+// Helper to add directory to User PATH
+bool AddToPath(const std::wstring& binDir) {
     HKEY hKey;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_READ | KEY_WRITE, &hKey) != ERROR_SUCCESS) {
         return false;
     }
 
-    wchar_t currentPath[32767];
-    DWORD size = sizeof(currentPath);
     DWORD type;
+    DWORD size = 0;
+    RegQueryValueExW(hKey, L"Path", nullptr, &type, nullptr, &size);
 
-    if (RegQueryValueExW(hKey, L"Path", NULL, &type, (LPBYTE)currentPath, &size) != ERROR_SUCCESS) {
-        currentPath[0] = L'\0';
+    std::vector<wchar_t> pathData(size / sizeof(wchar_t) + 1);
+    if (RegQueryValueExW(hKey, L"Path", nullptr, &type, (LPBYTE)pathData.data(), &size) != ERROR_SUCCESS) {
+        RegCloseKey(hKey);
+        return false;
     }
 
-    std::wstring pathStr(currentPath);
-    if (pathStr.find(pathToAdd) == std::wstring::npos) {
-        if (!pathStr.empty() && pathStr.back() != L';') {
-            pathStr += L";";
+    std::wstring currentPath(pathData.data());
+    if (currentPath.find(binDir) == std::wstring::npos) {
+        if (!currentPath.empty() && currentPath.back() != L';') {
+            currentPath += L";";
         }
-        pathStr += pathToAdd;
+        currentPath += binDir;
 
-        if (RegSetValueExW(hKey, L"Path", 0, REG_EXPAND_SZ, (LPBYTE)pathStr.c_str(), 
-            (DWORD)((pathStr.length() + 1) * sizeof(wchar_t))) != ERROR_SUCCESS) {
+        if (RegSetValueExW(hKey, L"Path", 0, REG_EXPAND_SZ, (const BYTE*)currentPath.c_str(), (currentPath.size() + 1) * sizeof(wchar_t)) == ERROR_SUCCESS) {
             RegCloseKey(hKey);
-            return false;
+            // Broadcast change so open windows know about it
+            SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)L"Environment", SMTO_ABORTIFHUNG, 5000, nullptr);
+            return true;
         }
     }
 
     RegCloseKey(hKey);
-    
-    // Notify system of environment change
-    SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)L"Environment",
-        SMTO_ABORTIFHUNG, 5000, NULL);
-    
-    return true;
+    return true; // Already in path
 }
 
-// Function to create file association
-bool CreateFileAssociation(const std::wstring& installDir) {
+// Helper to register .j file extension
+bool RegisterFileAssociation(const std::wstring& binPath, const std::wstring& iconPath) {
     HKEY hKey;
-    std::wstring iconPath = installDir + L"\\J_lang_logo.ico";
-    std::wstring exePath = installDir + L"\\bin\\j.exe";
-
-    // Create .j extension key
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.j", 0, NULL, 0, 
-        KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, NULL, 0, REG_SZ, (LPBYTE)L"JSourceFile", 
-            (DWORD)((wcslen(L"JSourceFile") + 1) * sizeof(wchar_t)));
+    
+    // 1. Map .j to JSourceFile
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.j", 0, nullptr, 0, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+        const wchar_t* val = L"JSourceFile";
+        RegSetValueExW(hKey, nullptr, 0, REG_SZ, (const BYTE*)val, (wcslen(val) + 1) * sizeof(wchar_t));
         RegCloseKey(hKey);
     }
 
-    // Create JSourceFile key
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\JSourceFile", 0, NULL, 0,
-        KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, NULL, 0, REG_SZ, (LPBYTE)L"J Source File",
-            (DWORD)((wcslen(L"J Source File") + 1) * sizeof(wchar_t)));
+    // 2. Describe JSourceFile
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\JSourceFile", 0, nullptr, 0, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+        const wchar_t* val = L"J Source File";
+        RegSetValueExW(hKey, nullptr, 0, REG_SZ, (const BYTE*)val, (wcslen(val) + 1) * sizeof(wchar_t));
         RegCloseKey(hKey);
     }
 
-    // Set icon
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\JSourceFile\\DefaultIcon", 0, NULL, 0,
-        KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, NULL, 0, REG_SZ, (LPBYTE)iconPath.c_str(),
-            (DWORD)((iconPath.length() + 1) * sizeof(wchar_t)));
+    // 3. Set Icon
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\JSourceFile\\DefaultIcon", 0, nullptr, 0, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+        RegSetValueExW(hKey, nullptr, 0, REG_SZ, (const BYTE*)iconPath.c_str(), (iconPath.size() + 1) * sizeof(wchar_t));
         RegCloseKey(hKey);
     }
 
-    // Set open command
-    std::wstring command = L"\"" + exePath + L"\" run \"%1\"";
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\JSourceFile\\shell\\open\\command", 0, NULL, 0,
-        KEY_WRITE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
-        RegSetValueExW(hKey, NULL, 0, REG_SZ, (LPBYTE)command.c_str(),
-            (DWORD)((command.length() + 1) * sizeof(wchar_t)));
+    // 4. Set Open Command: "path\to\j.exe" run "%1"
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\JSourceFile\\shell\\open\\command", 0, nullptr, 0, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+        std::wstring cmd = L"\"" + binPath + L"\" run \"%1\"";
+        RegSetValueExW(hKey, nullptr, 0, REG_SZ, (const BYTE*)cmd.c_str(), (cmd.size() + 1) * sizeof(wchar_t));
         RegCloseKey(hKey);
     }
 
     return true;
-}
-
-// Function to copy file
-bool CopyFileWithProgress(const fs::path& source, const fs::path& dest) {
-    try {
-        fs::create_directories(dest.parent_path());
-        fs::copy_file(source, dest, fs::copy_options::overwrite_existing);
-        return true;
-    }
-    catch (...) {
-        return false;
-    }
-}
-
-// Function to copy directory recursively
-bool CopyDirectory(const fs::path& source, const fs::path& dest) {
-    try {
-        fs::create_directories(dest);
-        for (const auto& entry : fs::recursive_directory_iterator(source)) {
-            const auto& path = entry.path();
-            auto relativePath = fs::relative(path, source);
-            auto destPath = dest / relativePath;
-
-            if (fs::is_directory(path)) {
-                fs::create_directories(destPath);
-            }
-            else {
-                fs::copy_file(path, destPath, fs::copy_options::overwrite_existing);
-            }
-        }
-        return true;
-    }
-    catch (...) {
-        return false;
-    }
 }
 
 int main() {
-    // Set console to UTF-8
-    SetConsoleOutputCP(CP_UTF8);
+    std::wcout << L"Installing J Language..." << std::endl;
 
-    std::wcout << L"\n";
-    std::wcout << L"==================================================\n";
-    std::wcout << L"  J Programming Language Installer v0.1.0\n";
-    std::wcout << L"==================================================\n";
-    std::wcout << L"\n";
-
-    // Get installation directory
-    std::wstring localAppData = GetLocalAppDataPath();
-    if (localAppData.empty()) {
-        std::wcerr << L"ERROR: Could not get LocalAppData path\n";
-        std::wcout << L"\nPress Enter to exit...";
-        std::cin.get();
+    // 1. Determine Install Paths (%LOCALAPPDATA%\J)
+    wchar_t localAppData[MAX_PATH];
+    if (SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, localAppData) != S_OK) {
+        std::wcerr << L"Failed to get LocalAppData" << std::endl;
         return 1;
     }
 
-    std::wstring installDir = localAppData + L"\\J";
-    std::wstring binDir = installDir + L"\\bin";
-    std::wstring examplesDir = installDir + L"\\examples";
+    fs::path installDir = fs::path(localAppData) / "J";
+    fs::path binDir = installDir / "bin";
+    fs::path examplesDir = installDir / "examples";
 
-    std::wcout << L"Install directory: " << installDir << L"\n\n";
-
-    // Find J executable
-    std::wcout << L"Looking for J executable...\n";
-    
-    fs::path exePath;
-    std::vector<std::wstring> searchPaths = {
-        L"..\\dist\\j-windows-x86_64.exe",
-        L"dist\\j-windows-x86_64.exe",
-        L"..\\target\\release\\j.exe",
-        L"target\\release\\j.exe"
-    };
-
-    for (const auto& path : searchPaths) {
-        if (fs::exists(path)) {
-            exePath = path;
-            std::wcout << L"Found: " << path << L"\n";
-            break;
-        }
-    }
-
-    if (exePath.empty()) {
-        std::wcerr << L"\nERROR: J executable not found!\n";
-        std::wcerr << L"\nPlease build first:\n";
-        std::wcerr << L"  cd ..\n";
-        std::wcerr << L"  cargo build --release\n";
-        std::wcout << L"\nPress Enter to exit...";
-        std::cin.get();
-        return 1;
-    }
-
-    // Create directories
-    std::wcout << L"\nCreating directories...\n";
     try {
         fs::create_directories(binDir);
         fs::create_directories(examplesDir);
-    }
-    catch (const std::exception& e) {
-        std::wcerr << L"ERROR: Could not create directories\n";
-        std::wcout << L"\nPress Enter to exit...";
-        std::cin.get();
+    } catch (const std::exception& e) {
+        std::cerr << "Error creating directories: " << e.what() << std::endl;
         return 1;
     }
 
-    // Copy executable
-    std::wcout << L"Installing J executable...\n";
-    fs::path destExe = fs::path(binDir) / L"j.exe";
-    if (!CopyFileWithProgress(exePath, destExe)) {
-        std::wcerr << L"ERROR: Could not copy executable\n";
-        std::wcout << L"\nPress Enter to exit...";
-        std::cin.get();
-        return 1;
-    }
-    std::wcout << L"Installed: " << destExe.wstring() << L"\n";
+    // 2. Find and Copy Binary
+    // Look in ../target/release/j.exe relative to this installer
+    fs::path sourceBin = fs::current_path().parent_path() / "target" / "release" / "j.exe";
+    if (!fs::exists(sourceBin)) sourceBin = "j.exe"; // Fallback
 
-    // Copy icon
-    std::wcout << L"Copying icon...\n";
-    if (fs::exists(L"..\\J_lang_logo.ico")) {
-        CopyFileWithProgress(L"..\\J_lang_logo.ico", fs::path(installDir) / L"J_lang_logo.ico");
-    }
-
-    // Copy examples
-    std::wcout << L"Copying examples...\n";
-    if (fs::exists(L"..\\examples")) {
-        CopyDirectory(L"..\\examples", examplesDir);
-        std::wcout << L"Copied examples to: " << examplesDir << L"\n";
-    }
-
-    // Add to PATH
-    std::wcout << L"\nAdding to PATH...\n";
-    if (AddToPath(binDir)) {
-        std::wcout << L"Added to PATH\n";
-    }
-    else {
-        std::wcout << L"Already in PATH or could not add\n";
-    }
-
-    // Create file association
-    std::wcout << L"Creating file association...\n";
-    if (CreateFileAssociation(installDir)) {
-        std::wcout << L"File association created (.j files)\n";
-    }
-
-    // Verify installation
-    std::wcout << L"\nVerifying installation...\n";
-    std::wstring verifyCmd = L"\"" + binDir + L"\\j.exe\" --version";
-    FILE* pipe = _wpopen(verifyCmd.c_str(), L"r");
-    if (pipe) {
-        char buffer[128];
-        if (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-            std::wcout << L"SUCCESS! J is installed\n";
-            std::cout << "Version: " << buffer;
+    if (fs::exists(sourceBin)) {
+        try {
+            fs::copy_file(sourceBin, binDir / "j.exe", fs::copy_options::overwrite_existing);
+            std::wcout << L"✅ Copied binary to " << (binDir / "j.exe").c_str() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Error copying binary: " << e.what() << std::endl;
+            return 1;
         }
-        _pclose(pipe);
+    } else {
+        std::wcerr << L"❌ Could not find j.exe to install. Build it first!" << std::endl;
+        std::cin.get();
+        return 1;
     }
 
-    // Success message
-    std::wcout << L"\n";
-    std::wcout << L"==================================================\n";
-    std::wcout << L"  Installation Complete!\n";
-    std::wcout << L"==================================================\n";
-    std::wcout << L"\n";
-    std::wcout << L"Next steps:\n";
-    std::wcout << L"\n";
-    std::wcout << L"1. Restart your terminal\n";
-    std::wcout << L"\n";
-    std::wcout << L"2. Verify installation:\n";
-    std::wcout << L"   j --version\n";
-    std::wcout << L"\n";
-    std::wcout << L"3. Start the REPL:\n";
-    std::wcout << L"   j repl\n";
-    std::wcout << L"\n";
-    std::wcout << L"4. Run an example:\n";
-    std::wcout << L"   j run \"" << examplesDir << L"\\basic.j\"\n";
-    std::wcout << L"\n";
-    std::wcout << L"Installation directory: " << installDir << L"\n";
-    std::wcout << L"\n";
+    // 3. Copy Examples
+    fs::path sourceExamples = fs::current_path().parent_path() / "examples";
+    if (fs::exists(sourceExamples)) {
+        try {
+            fs::copy(sourceExamples, examplesDir, fs::copy_options::overwrite_existing | fs::copy_options::recursive);
+            std::wcout << L"✅ Copied examples." << std::endl;
+        } catch (...) {}
+    }
 
-    std::wcout << L"Press Enter to exit...";
+    // 3b. Copy Icon
+    fs::path sourceIcon = fs::current_path().parent_path().parent_path() / "J_lang_logo.ico";
+    std::wstring finalIconPath = (binDir / "j.exe").wstring() + L",0"; // Default to exe icon
+
+    if (fs::exists(sourceIcon)) {
+        try {
+            fs::copy_file(sourceIcon, installDir / "J_lang_logo.ico", fs::copy_options::overwrite_existing);
+            finalIconPath = (installDir / "J_lang_logo.ico").wstring();
+            std::wcout << L"✅ Copied icon." << std::endl;
+        } catch (...) {}
+    }
+
+    // 4. Add to PATH
+    if (AddToPath(binDir.wstring())) std::wcout << L"✅ Added to PATH." << std::endl;
+
+    // 5. Register File Associations
+    RegisterFileAssociation((binDir / "j.exe").wstring(), finalIconPath);
+    std::wcout << L"✅ Registered .j file extension." << std::endl;
+
+    std::wcout << L"\nInstallation Complete! Press Enter to exit..." << std::endl;
     std::cin.get();
-
     return 0;
 }
