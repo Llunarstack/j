@@ -90,7 +90,7 @@ Name: "fileassoc"; Description: "Associate .j files with J (recommended)"; Group
 Source: "..\dist\j-windows-x86_64.exe"; DestDir: "{app}"; DestName: "j.exe"; Flags: ignoreversion; Components: core
 
 ; Icon file (real ICO format)
-Source: "..\J_lang.ico"; DestDir: "{app}"; Flags: ignoreversion; Components: core
+Source: "..\..\J_lang_logo.ico"; DestDir: "{app}"; DestName: "J_lang.ico"; Flags: ignoreversion; Components: core
 
 ; Standard Library
 Source: "..\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: stdlib
