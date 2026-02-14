@@ -5,7 +5,7 @@ param(
     [switch]$SkipTests = $false
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
@@ -24,27 +24,27 @@ if (-not (Test-Path $DistDir)) {
 
 # Check for Rust/Cargo
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Cargo not found. Please install Rust from https://rustup.rs/" -ForegroundColor Red
+    Write-Host " Cargo not found. Please install Rust from https://rustup.rs/" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "✅ Cargo found: $(cargo --version)" -ForegroundColor Green
+Write-Host " Cargo found: $(cargo --version)" -ForegroundColor Green
 Write-Host ""
 
 # Run tests first (unless skipped)
 if (-not $SkipTests) {
-    Write-Host "🧪 Running tests..." -ForegroundColor Yellow
+    Write-Host " Running tests..." -ForegroundColor Yellow
     Push-Location $ProjectRoot
     cargo test --release
     Pop-Location
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host ""
-        Write-Host "❌ Tests failed!" -ForegroundColor Red
+        Write-Host " Tests failed!" -ForegroundColor Red
         exit 1
     }
     
-    Write-Host "✅ All tests passed" -ForegroundColor Green
+    Write-Host " All tests passed" -ForegroundColor Green
     Write-Host ""
 }
 
@@ -66,7 +66,7 @@ $targets = @(
     @{Name="macos-aarch64"; Target="aarch64-apple-darwin"; Ext=""; Native=$false}
 )
 
-Write-Host "📦 Building for $($targets.Count) platforms..." -ForegroundColor Green
+Write-Host " Building for $($targets.Count) platforms..." -ForegroundColor Green
 Write-Host ""
 
 $successCount = 0
@@ -74,11 +74,12 @@ $failCount = 0
 $results = @()
 
 foreach ($target in $targets) {
-    Write-Host "🔨 Building: $($target.Name) ($($target.Target))..." -ForegroundColor Yellow
+    Write-Host " Building: $($target.Name) ($($target.Target))..." -ForegroundColor Yellow
     
     # Add target
     Write-Host "   Adding target..." -ForegroundColor Gray
     rustup target add $target.Target 2>&1 | Out-Null
+    $ErrorActionPreference = "Stop"
     
     # Build
     Push-Location $ProjectRoot
@@ -91,7 +92,7 @@ foreach ($target in $targets) {
         } else {
             # Check for cross
             if (-not (Get-Command cross -ErrorAction SilentlyContinue)) {
-                Write-Host "   ⚠️  Installing cross for cross-compilation..." -ForegroundColor Yellow
+                Write-Host "     Installing cross for cross-compilation..." -ForegroundColor Yellow
                 cargo install cross --git https://github.com/cross-rs/cross 2>&1 | Out-Null
             }
             
@@ -111,30 +112,30 @@ foreach ($target in $targets) {
             # Get file size
             $size = (Get-Item $distPath).Length / 1MB
             
-            Write-Host "   ✅ Success! Size: $([math]::Round($size, 2)) MB" -ForegroundColor Green
+            Write-Host "    Success! Size: $([math]::Round($size, 2)) MB" -ForegroundColor Green
             $successCount++
             $results += @{
                 Platform=$target.Name
-                Status="✅ Success"
+                Status=" Success"
                 Size="$([math]::Round($size, 2)) MB"
                 Path=$distPath
             }
         } else {
-            Write-Host "   ❌ Failed: Binary not found at $binaryPath" -ForegroundColor Red
+            Write-Host "    Failed: Binary not found at $binaryPath" -ForegroundColor Red
             $failCount++
             $results += @{
                 Platform=$target.Name
-                Status="❌ Failed"
+                Status=" Failed"
                 Size="N/A"
                 Path=""
             }
         }
     } catch {
-        Write-Host "   ❌ Failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "    Failed: $($_.Exception.Message)" -ForegroundColor Red
         $failCount++
         $results += @{
             Platform=$target.Name
-            Status="❌ Failed"
+            Status=" Failed"
             Size="N/A"
             Path=""
         }
@@ -146,7 +147,7 @@ foreach ($target in $targets) {
 
 # Generate checksums
 if ($successCount -gt 0) {
-    Write-Host "🔐 Generating SHA256 checksums..." -ForegroundColor Yellow
+    Write-Host " Generating SHA256 checksums..." -ForegroundColor Yellow
     $checksumFile = Join-Path $DistDir "checksums.txt"
     
     "" | Out-File -FilePath $checksumFile -Encoding UTF8
@@ -160,13 +161,13 @@ if ($successCount -gt 0) {
         "$hash  $($_.Name)" | Out-File -Append -FilePath $checksumFile -Encoding UTF8
     }
     
-    Write-Host "   ✅ Checksums saved to: checksums.txt" -ForegroundColor Green
+    Write-Host "    Checksums saved to: checksums.txt" -ForegroundColor Green
     Write-Host ""
 }
 
 # Summary
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "📊 Build Summary" -ForegroundColor Cyan
+Write-Host " Build Summary" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -185,13 +186,13 @@ foreach ($result in $results) {
 Write-Host ""
 Write-Host "Total: $successCount succeeded, $failCount failed" -ForegroundColor $(if ($failCount -eq 0) { "Green" } else { "Yellow" })
 Write-Host ""
-Write-Host "📁 Binaries saved to: $DistDir\" -ForegroundColor Cyan
+Write-Host " Binaries saved to: $DistDir\" -ForegroundColor Cyan
 Write-Host ""
 
 if ($successCount -gt 0) {
-    Write-Host "✨ Build complete! Ready to create installers." -ForegroundColor Green
+    Write-Host " Build complete! Ready to create installers." -ForegroundColor Green
 } else {
-    Write-Host "⚠️  No binaries were built successfully." -ForegroundColor Yellow
+    Write-Host "  No binaries were built successfully." -ForegroundColor Yellow
 }
 
 Write-Host ""
