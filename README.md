@@ -4,11 +4,17 @@ This is the main source code repository for J. It contains the compiler, standar
 
 ## Why J?
 
-**Performance:** Fast execution with JIT compilation support, suitable for performance-critical applications and easily integrated with other languages.
+**Built for Competitive Programming and Data Problems:** Native support for Counters, Grids with neighbor queries, Intervals, Deques, Priority Queues, Graphs, and Trees. Solve algorithmic problems with less boilerplate.
 
-**Reliability:** Rich type system with strong typing and type inference ensure type safety, reducing bugs at compile-time.
+**Unique Type System:** First-class support for specialized types including Emoji, Money (with currency), Hex literals, Date/Time, and mathematical Infinity. Express domain concepts directly in code.
 
-**Productivity:** Expressive syntax, comprehensive standard library, excellent error diagnostics, and integrated tooling including package management, REPL, and editor support.
+**Advanced Grid Operations:** Built-in grid.neighbors(), grid.neighbors8(), grid.find_all(), grid.row(), and grid.col() methods. Perfect for pathfinding, game development, and spatial algorithms.
+
+**Powerful Iteration:** Window operations, scan operations (scan_max, scan_sum), broadcast operations, and pipeline operators. Transform data with expressive syntax.
+
+**Counter Arithmetic:** Add, subtract, and compare frequency counters directly. Built-in most_common() and total() methods for statistical operations.
+
+**Productivity Features:** Defer statements for cleanup, converge loops for fixed-point iteration, pattern matching, and comprehensive error handling.
 
 ## Quick Start
 
