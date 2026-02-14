@@ -13,6 +13,10 @@ categories = ["development-tools", "compilers"]
 name = "j"
 path = "src/main.rs"
 
+[[test]]
+name = "basic_types"
+path = "tests/integration/basic_types.rs"
+
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
