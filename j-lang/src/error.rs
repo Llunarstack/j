@@ -1,6 +1,7 @@
 // Enhanced error messaging system with helpful tips and solutions
 
 use std::fmt;
+use std::collections::HashMap;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -12,6 +13,9 @@ pub struct JError {
     pub source_line: Option<String>,
     pub tip: Option<String>,
     pub solution: Option<String>,
+    pub context: Option<String>,
+    pub similar_names: Vec<String>,
+    pub help_url: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -58,6 +62,9 @@ impl JError {
             source_line: None,
             tip: None,
             solution: None,
+            context: None,
+            similar_names: Vec::new(),
+            help_url: None,
         }
     }
     
@@ -83,40 +90,69 @@ impl JError {
         self
     }
     
+    pub fn with_context(mut self, context: String) -> Self {
+        self.context = Some(context);
+        self
+    }
+    
+    pub fn with_similar_names(mut self, names: Vec<String>) -> Self {
+        self.similar_names = names;
+        self
+    }
+    
+    pub fn with_help_url(mut self, url: String) -> Self {
+        self.help_url = Some(url);
+        self
+    }
+    
     // Smart error constructors with automatic tips and solutions
     
     pub fn undefined_variable(name: &str, line: usize, column: usize) -> Self {
-        let similar = suggest_similar_name(name);
+        let similar = find_similar_names(name, &get_common_variable_names());
         let mut error = Self::new(
             ErrorKind::UndefinedVariable,
             format!("Variable '{}' is not defined", name)
         ).with_location(line, column);
         
-        if let Some(suggestion) = similar {
-            error = error.with_tip(format!("Did you mean '{}'?", suggestion));
+        if !similar.is_empty() {
+            error = error.with_similar_names(similar.clone());
+            error = error.with_tip(format!("Did you mean one of these? {}", similar.join(", ")));
         } else {
             error = error.with_tip("Make sure you've declared this variable before using it".to_string());
         }
         
         error = error.with_solution(format!(
-            "Declare the variable first:\n  int | {} -> 0\nor check for typos in the variable name",
-            name
+            "Declare the variable first:\n  int | {} -> 0\n  str | {} -> \"value\"\n  list | {} -> []\n\nOr check for typos in the variable name",
+            name, name, name
         ));
+        
+        error = error.with_context("Variable access".to_string());
+        error = error.with_help_url("https://j-lang.dev/docs/variables".to_string());
         
         error
     }
     
     pub fn undefined_function(name: &str, line: usize, column: usize) -> Self {
+        let similar = find_similar_names(name, &get_builtin_function_names());
         let mut error = Self::new(
             ErrorKind::UndefinedFunction,
             format!("Function '{}' is not defined", name)
         ).with_location(line, column);
         
-        error = error.with_tip("Check if the function name is spelled correctly".to_string());
+        if !similar.is_empty() {
+            error = error.with_similar_names(similar.clone());
+            error = error.with_tip(format!("Did you mean one of these? {}", similar.join(", ")));
+        } else {
+            error = error.with_tip("Check if the function name is spelled correctly or if it's a built-in function".to_string());
+        }
+        
         error = error.with_solution(format!(
-            "Define the function first:\n  fn | {}(params) > {{\n    // function body\n  }}",
+            "Define the function first:\n  fn | {}(params) > {{\n    // function body\n    return result\n  }}\n\nOr check the built-in functions list",
             name
         ));
+        
+        error = error.with_context("Function call".to_string());
+        error = error.with_help_url("https://j-lang.dev/docs/functions".to_string());
         
         error
     }
@@ -275,6 +311,121 @@ impl JError {
         error = error.with_solution(
             "Add a base case to stop recursion:\n  fn | factorial(int|n) > {\n    if n <= 1 { return 1 }\n    return n * factorial(n - 1)\n  }".to_string()
         );
+        error = error.with_context("Recursive function call".to_string());
+        error = error.with_help_url("https://j-lang.dev/docs/recursion".to_string());
+        
+        error
+    }
+    
+    pub fn invalid_operation(operation: &str, type1: &str, type2: &str, line: usize, column: usize) -> Self {
+        let mut error = Self::new(
+            ErrorKind::InvalidOperation,
+            format!("Cannot perform '{}' on {} and {}", operation, type1, type2)
+        ).with_location(line, column);
+        
+        error = error.with_tip(format!("The '{}' operation is not supported for these types", operation));
+        
+        let solution = match (operation, type1, type2) {
+            ("+", "str", "int") | ("+", "int", "str") => 
+                "Convert to string first: str(number) + text\nOr convert to int: number + int(text)",
+            ("+", "list", _) | ("+", _, "list") => 
+                "Use append() or extend() to add items to a list",
+            ("-" | "*" | "/", "str", _) | ("-" | "*" | "/", _, "str") => 
+                "Convert strings to numbers first: int(text) or float(text)",
+            _ => "Check that both operands are compatible types",
+        };
+        
+        error = error.with_solution(solution.to_string());
+        error = error.with_context(format!("Binary operation: {}", operation));
+        
+        error
+    }
+    
+    pub fn parser_error(message: &str, expected: &str, got: &str, line: usize, column: usize) -> Self {
+        let mut error = Self::new(
+            ErrorKind::UnexpectedToken,
+            message.to_string()
+        ).with_location(line, column);
+        
+        // Provide context-specific tips
+        let (tip, solution): (&str, &str) = match expected {
+            "'->' after variable name" | "'|' after type" => (
+                "Variable declarations follow the pattern: type | name -> value",
+                "Examples:\n  int | count -> 0\n  str | name -> \"John\"\n  list | items -> [1, 2, 3]"
+            ),
+            "')' after parameters" | "'>' before function body" => (
+                "Function declarations follow the pattern: fn | name(params) > { body }",
+                "Examples:\n  fn | greet(str|name) > { out(\"Hello\", name) }\n  fn | add(int|a, int|b) > { return a + b }"
+            ),
+            "'{' to start block" => (
+                "Blocks must be enclosed in curly braces { }",
+                "Examples:\n  if condition { statements }\n  for i in range { statements }"
+            ),
+            _ => (
+                "Check the expected token",
+                "Check the J-Lang syntax guide for correct syntax"
+            ),
+        };
+        
+        error = error.with_tip(tip.to_string());
+        error = error.with_solution(solution.to_string());
+        error = error.with_context("Parsing".to_string());
+        error = error.with_help_url("https://j-lang.dev/docs/syntax".to_string());
+        
+        error
+    }
+    
+    pub fn keyword_as_identifier(keyword: &str, line: usize, column: usize) -> Self {
+        let mut error = Self::new(
+            ErrorKind::InvalidSyntax,
+            format!("'{}' is a reserved keyword and cannot be used as an identifier", keyword)
+        ).with_location(line, column);
+        
+        error = error.with_tip(format!("'{}' has special meaning in J-Lang", keyword));
+        error = error.with_solution(format!(
+            "Choose a different name:\n  {} -> my_{}\n  {} -> {}_value\n  {} -> user_{}",
+            keyword, keyword, keyword, keyword, keyword, keyword
+        ));
+        
+        let keywords = vec![
+            "if", "else", "for", "while", "fn", "return", "break", "continue",
+            "int", "str", "bool", "float", "list", "dict", "true", "false",
+            "sweep", "shrink", "meet", "binary", "dp", "while_nonzero", "while_change"
+        ];
+        
+        error = error.with_context(format!("Reserved keywords: {}", keywords.join(", ")));
+        
+        error
+    }
+    
+    pub fn immutable_assignment(name: &str, line: usize, column: usize) -> Self {
+        let mut error = Self::new(
+            ErrorKind::InvalidOperation,
+            format!("Cannot assign to immutable variable '{}'", name)
+        ).with_location(line, column);
+        
+        error = error.with_tip("This variable was declared as immutable (const)".to_string());
+        error = error.with_solution(format!(
+            "Either:\n  1. Declare as mutable: int | {} -> value\n  2. Create a new variable: int | new_{} -> new_value",
+            name, name
+        ));
+        error = error.with_context("Variable assignment".to_string());
+        
+        error
+    }
+    
+    pub fn file_not_found(filename: &str) -> Self {
+        let mut error = Self::new(
+            ErrorKind::FileNotFound,
+            format!("File '{}' not found", filename)
+        );
+        
+        error = error.with_tip("Check that the file path is correct and the file exists".to_string());
+        error = error.with_solution(format!(
+            "Verify:\n  1. The file exists at: {}\n  2. The file extension is correct (.j)\n  3. You have read permissions",
+            filename
+        ));
+        error = error.with_context("File operation".to_string());
         
         error
     }
@@ -282,69 +433,131 @@ impl JError {
 
 impl fmt::Display for JError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Error header with emoji
-        let emoji = match self.kind {
-            ErrorKind::UnexpectedCharacter | ErrorKind::UnexpectedToken => "❌",
-            ErrorKind::UndefinedVariable | ErrorKind::UndefinedFunction => "🔍",
-            ErrorKind::TypeError => "🔧",
-            ErrorKind::DivisionByZero | ErrorKind::IndexOutOfBounds => "⚠️",
-            ErrorKind::StackOverflow => "💥",
-            _ => "❗",
+        // Error header with emoji and color-coded severity
+        let (emoji, severity) = match self.kind {
+            ErrorKind::UnexpectedCharacter | ErrorKind::UnexpectedToken => ("❌", "SYNTAX ERROR"),
+            ErrorKind::UndefinedVariable | ErrorKind::UndefinedFunction => ("🔍", "NAME ERROR"),
+            ErrorKind::TypeError => ("🔧", "TYPE ERROR"),
+            ErrorKind::DivisionByZero | ErrorKind::IndexOutOfBounds => ("⚠️", "RUNTIME ERROR"),
+            ErrorKind::StackOverflow => ("💥", "STACK ERROR"),
+            ErrorKind::WrongArgumentCount | ErrorKind::InvalidArgument => ("📝", "ARGUMENT ERROR"),
+            ErrorKind::FileNotFound | ErrorKind::IOError => ("📁", "FILE ERROR"),
+            _ => ("❗", "ERROR"),
         };
         
-        writeln!(f, "\n{} Error: {}", emoji, self.message)?;
+        writeln!(f, "\n╔═══════════════════════════════════════════════════════════════")?;
+        writeln!(f, "║ {} {} ", emoji, severity)?;
+        writeln!(f, "╠═══════════════════════════════════════════════════════════════")?;
+        writeln!(f, "║")?;
+        writeln!(f, "║ {}", self.message)?;
+        
+        // Context information
+        if let Some(ref ctx) = self.context {
+            writeln!(f, "║ Context: {}", ctx)?;
+        }
         
         // Location information
         if let (Some(line), Some(column)) = (self.line, self.column) {
-            writeln!(f, "  ╭─ at line {}, column {}", line, column)?;
+            writeln!(f, "║")?;
+            writeln!(f, "║ Location: line {}, column {}", line, column)?;
             
             // Show source line with pointer
             if let Some(ref source) = self.source_line {
-                writeln!(f, "  │")?;
-                writeln!(f, "{:3} │ {}", line, source)?;
-                writeln!(f, "  │ {}^", " ".repeat(column))?;
+                writeln!(f, "║")?;
+                writeln!(f, "║ {:>4} │ {}", line, source)?;
+                writeln!(f, "║      │ {}^~~~", " ".repeat(column.saturating_sub(1)))?;
+            }
+        }
+        
+        writeln!(f, "║")?;
+        writeln!(f, "╠═══════════════════════════════════════════════════════════════")?;
+        
+        // Similar names suggestions
+        if !self.similar_names.is_empty() {
+            writeln!(f, "║")?;
+            writeln!(f, "║ 🔎 Did you mean one of these?")?;
+            for name in &self.similar_names {
+                writeln!(f, "║    • {}", name)?;
             }
         }
         
         // Tip section
         if let Some(ref tip) = self.tip {
-            writeln!(f, "  │")?;
-            writeln!(f, "  ├─ 💡 Tip: {}", tip)?;
+            writeln!(f, "║")?;
+            writeln!(f, "║ 💡 Tip:")?;
+            for line in tip.lines() {
+                writeln!(f, "║    {}", line)?;
+            }
         }
         
         // Solution section
         if let Some(ref solution) = self.solution {
-            writeln!(f, "  │")?;
-            writeln!(f, "  ├─ ✅ Solution:")?;
+            writeln!(f, "║")?;
+            writeln!(f, "║ ✅ Solution:")?;
             for line in solution.lines() {
-                writeln!(f, "  │    {}", line)?;
+                writeln!(f, "║    {}", line)?;
             }
         }
         
-        writeln!(f, "  ╰─")?;
+        // Help URL
+        if let Some(ref url) = self.help_url {
+            writeln!(f, "║")?;
+            writeln!(f, "║ 📚 Learn more: {}", url)?;
+        }
+        
+        writeln!(f, "║")?;
+        writeln!(f, "╚═══════════════════════════════════════════════════════════════\n")?;
         
         Ok(())
     }
 }
 
+// Helper function to find similar names using Levenshtein distance
+fn find_similar_names(name: &str, candidates: &[&str]) -> Vec<String> {
+    let mut matches: Vec<(String, usize)> = candidates
+        .iter()
+        .map(|&candidate| {
+            let distance = levenshtein_distance(name, candidate);
+            (candidate.to_string(), distance)
+        })
+        .filter(|(_, distance)| *distance <= 3 && *distance > 0)
+        .collect();
+    
+    matches.sort_by_key(|(_, distance)| *distance);
+    matches.into_iter().take(3).map(|(name, _)| name).collect()
+}
+
+// Get common variable names for suggestions
+fn get_common_variable_names() -> Vec<&'static str> {
+    vec![
+        "i", "j", "k", "x", "y", "z", 
+        "count", "index", "value", "result", "temp",
+        "left", "right", "mid", "start", "end",
+        "sum", "product", "max", "min", "total",
+        "arr", "list", "nums", "items", "data",
+        "key", "val", "name", "id", "size", "length"
+    ]
+}
+
+// Get built-in function names for suggestions
+fn get_builtin_function_names() -> Vec<&'static str> {
+    vec![
+        "out", "len", "sum", "min", "max", "abs", "pow",
+        "range", "map", "filter", "reduce", "zip",
+        "sort", "reverse", "unique", "flatten",
+        "split", "join", "replace", "trim",
+        "push", "pop", "append", "insert", "remove",
+        "keys", "values", "items", "get", "set",
+        "int", "float", "str", "bool", "list", "dict",
+        "type", "print", "input", "read", "write"
+    ]
+}
+
 // Helper function to suggest similar variable names (simple Levenshtein distance)
 fn suggest_similar_name(name: &str) -> Option<String> {
-    // This would ideally check against known variables in scope
-    // For now, we'll suggest common typos
-    let common_vars = vec!["i", "j", "k", "x", "y", "z", "count", "index", "value", "result", "temp"];
-    
-    let mut best_match = None;
-    let mut best_distance = usize::MAX;
-    
-    for var in common_vars {
-        let distance = levenshtein_distance(name, var);
-        if distance < best_distance && distance <= 2 {
-            best_distance = distance;
-            best_match = Some(var.to_string());
-        }
-    }
-    
-    best_match
+    let candidates = get_common_variable_names();
+    let similar = find_similar_names(name, &candidates);
+    similar.first().cloned()
 }
 
 // Simple Levenshtein distance implementation

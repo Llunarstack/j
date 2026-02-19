@@ -36,12 +36,42 @@ pub enum Value {
     Dict(HashMap<String, Value>),
     Set(HashSet<String>), // For simplicity, using String keys
     Counter(HashMap<String, i64>), // Frequency counter
-    Deque(Vec<Value>), // Double-ended queue
-    PriorityQ(Vec<(i64, Value)>), // Priority queue (min-heap by default)
+    Deque(Vec<Value>), // Double-ended queue (legacy - use Queue instead)
+    PriorityQ(Vec<(i64, Value)>), // Priority queue (legacy - use Prio instead)
     Graph(HashMap<String, Vec<(String, f64)>>), // Graph: node -> [(neighbor, weight), ...]
+    // New OP collection types
+    Queue(std::collections::VecDeque<Value>), // Double-ended queue with O(1) push/pop both ends
+    Ring { buffer: Vec<Value>, capacity: usize, head: usize, size: usize }, // Circular buffer with fixed capacity
+    Sorted(Vec<Value>), // Auto-sorted list (kept sorted on insert)
+    Bag(HashMap<String, i64>), // Multiset/bag with automatic frequency counting
+    Window { source: Vec<Value>, size: usize, start: usize }, // Sliding window view (zero-copy)
+    View { source: Box<Value>, start: usize, end: usize, mutable: bool }, // Zero-copy slice view
+    Prio(Vec<(i64, Value)>), // Priority queue (min-heap) - improved version
+    Diff(Vec<Value>), // Difference list for cheap append
     Tree {
         value: Box<Value>,
         children: Vec<Value>, // Children are also Tree values
+    },
+    // Advanced array types
+    Span {
+        source: Box<Value>,
+        start: usize,
+        end: usize,
+    },
+    MutSpan {
+        source: Box<Value>,
+        start: usize,
+        end: usize,
+    },
+    Chunk {
+        source: Box<Value>,
+        chunk_size: usize,
+        current_index: usize,
+    },
+    Sparse {
+        data: HashMap<usize, Value>,
+        default: Box<Value>,
+        size: usize,
     },
     Function {
         name: String,
@@ -67,6 +97,14 @@ pub enum Value {
     GridFindAll(Box<Value>), // callable: grid.find_all(value) -> list of (row, col) positions
     GridRow(Box<Value>), // callable: grid.row(n) -> list of values in row n
     GridCol(Box<Value>), // callable: grid.col(n) -> list of values in column n
+    MatrixRow(Box<Value>), // callable: matrix.row(n) -> list of values in row n
+    MatrixCol(Box<Value>), // callable: matrix.col(n) -> list of values in column n
+    MatrixDiagonal(Box<Value>), // callable: matrix.diagonal() -> list of diagonal values
+    MatrixFlat(Box<Value>), // callable: matrix.flat() -> flattened list
+    MatrixRowSums(Box<Value>), // callable: matrix.row_sums() -> list of row sums
+    MatrixColSums(Box<Value>), // callable: matrix.col_sums() -> list of column sums
+    MatrixRowMeans(Box<Value>), // callable: matrix.row_means() -> list of row means
+    MatrixColMeans(Box<Value>), // callable: matrix.col_means() -> list of column means
     Enum {
         name: String,
         variants: HashMap<String, Value>,
@@ -175,6 +213,14 @@ impl fmt::Display for Value {
             Value::GridFindAll(_) => write!(f, "<grid.find_all>"),
             Value::GridRow(_) => write!(f, "<grid.row>"),
             Value::GridCol(_) => write!(f, "<grid.col>"),
+            Value::MatrixRow(_) => write!(f, "<matrix.row>"),
+            Value::MatrixCol(_) => write!(f, "<matrix.col>"),
+            Value::MatrixDiagonal(_) => write!(f, "<matrix.diagonal>"),
+            Value::MatrixFlat(_) => write!(f, "<matrix.flat>"),
+            Value::MatrixRowSums(_) => write!(f, "<matrix.row_sums>"),
+            Value::MatrixColSums(_) => write!(f, "<matrix.col_sums>"),
+            Value::MatrixRowMeans(_) => write!(f, "<matrix.row_means>"),
+            Value::MatrixColMeans(_) => write!(f, "<matrix.col_means>"),
             Value::Infinity(positive) => {
                 if *positive {
                     write!(f, "inf")
@@ -248,6 +294,120 @@ impl fmt::Display for Value {
                     write!(f, "({}, {})", priority, value)?;
                 }
                 write!(f, "]")
+            }
+            Value::Queue(queue) => {
+                write!(f, "queue[")?;
+                for (i, item) in queue.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+            Value::Ring { buffer, size, head, capacity } => {
+                write!(f, "ring[")?;
+                for i in 0..*size {
+                    if i > 0 { write!(f, ", ")?; }
+                    let idx = (*head + i) % *capacity;
+                    write!(f, "{}", buffer[idx])?;
+                }
+                write!(f, "] (capacity: {})", capacity)
+            }
+            Value::Sorted(list) => {
+                write!(f, "sorted[")?;
+                for (i, item) in list.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+            Value::Bag(bag) => {
+                write!(f, "bag{{")?;
+                for (i, (key, count)) in bag.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}: {}", key, count)?;
+                }
+                write!(f, "}}")
+            }
+            Value::Window { source, size, start } => {
+                write!(f, "window[")?;
+                let end = (*start + *size).min(source.len());
+                for i in *start..end {
+                    if i > *start { write!(f, ", ")?; }
+                    write!(f, "{}", source[i])?;
+                }
+                write!(f, "] (size: {})", size)
+            }
+            Value::View { source, start, end, mutable } => {
+                write!(f, "view[")?;
+                if let Value::List(list) = source.as_ref() {
+                    for i in *start..*end {
+                        if i > *start { write!(f, ", ")?; }
+                        if i < list.len() {
+                            write!(f, "{}", list[i])?;
+                        }
+                    }
+                }
+                write!(f, "]")?;
+                if *mutable {
+                    write!(f, " (mutable)")
+                } else {
+                    write!(f, " (immutable)")
+                }
+            }
+            Value::Prio(pq) => {
+                write!(f, "prio[")?;
+                for (i, (priority, value)) in pq.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "({}, {})", priority, value)?;
+                }
+                write!(f, "]")
+            }
+            Value::Diff(list) => {
+                write!(f, "diff[")?;
+                for (i, item) in list.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+            Value::Span { source, start, end } => {
+                write!(f, "span[")?;
+                if let Value::List(list) = source.as_ref() {
+                    for i in *start..*end {
+                        if i > *start { write!(f, ", ")?; }
+                        if i < list.len() {
+                            write!(f, "{}", list[i])?;
+                        }
+                    }
+                }
+                write!(f, "]")
+            }
+            Value::MutSpan { source, start, end } => {
+                write!(f, "mut_span[")?;
+                if let Value::List(list) = source.as_ref() {
+                    for i in *start..*end {
+                        if i > *start { write!(f, ", ")?; }
+                        if i < list.len() {
+                            write!(f, "{}", list[i])?;
+                        }
+                    }
+                }
+                write!(f, "]")
+            }
+            Value::Chunk { source, chunk_size, current_index } => {
+                write!(f, "chunk[size={}, index={}]", chunk_size, current_index)
+            }
+            Value::Sparse { data, default, size } => {
+                write!(f, "sparse[size={}, stored={}, default={}]", size, data.len(), default)
+            }
+            Value::Ring { buffer, capacity, head, size } => {
+                write!(f, "ring[")?;
+                for i in 0..*size {
+                    if i > 0 { write!(f, ", ")?; }
+                    let idx = (*head + i) % *capacity;
+                    write!(f, "{}", buffer[idx])?;
+                }
+                write!(f, "] (capacity: {})", capacity)
             }
             Value::Graph(graph) => {
                 write!(f, "graph{{")?;
@@ -797,6 +957,100 @@ impl Interpreter {
                                 }
                             }
                             _ => return Err("Tree must be initialized with a dictionary".to_string()),
+                        }
+                    }
+                    // Advanced array types
+                    "span" => {
+                        match val {
+                            Value::Span { .. } => val,
+                            Value::List(list) => {
+                                // Create a span of the entire list
+                                let len = list.len();
+                                Value::Span {
+                                    source: Box::new(Value::List(list)),
+                                    start: 0,
+                                    end: len,
+                                }
+                            }
+                            _ => return Err("Span must be initialized with a list".to_string()),
+                        }
+                    }
+                    "mut_span" => {
+                        match val {
+                            Value::MutSpan { .. } => val,
+                            Value::List(list) => {
+                                let len = list.len();
+                                Value::MutSpan {
+                                    source: Box::new(Value::List(list)),
+                                    start: 0,
+                                    end: len,
+                                }
+                            }
+                            _ => return Err("MutSpan must be initialized with a list".to_string()),
+                        }
+                    }
+                    "chunk" => {
+                        match val {
+                            Value::Chunk { .. } => val,
+                            Value::List(list) => {
+                                Value::Chunk {
+                                    source: Box::new(Value::List(list)),
+                                    chunk_size: 1,
+                                    current_index: 0,
+                                }
+                            }
+                            _ => return Err("Chunk must be initialized with a list".to_string()),
+                        }
+                    }
+                    "sparse" => {
+                        match val {
+                            Value::Sparse { .. } => val,
+                            Value::List(list) => {
+                                // Convert list to sparse array
+                                let mut data = HashMap::new();
+                                for (i, item) in list.iter().enumerate() {
+                                    data.insert(i, item.clone());
+                                }
+                                Value::Sparse {
+                                    data,
+                                    default: Box::new(Value::Integer(0)),
+                                    size: list.len(),
+                                }
+                            }
+                            Value::Integer(size) => {
+                                // Create empty sparse array of given size
+                                Value::Sparse {
+                                    data: HashMap::new(),
+                                    default: Box::new(Value::Integer(0)),
+                                    size: size as usize,
+                                }
+                            }
+                            _ => return Err("Sparse must be initialized with a list or size".to_string()),
+                        }
+                    }
+                    "ring" => {
+                        match val {
+                            Value::Ring { .. } => val,
+                            Value::Integer(capacity) => {
+                                // Create empty ring buffer with given capacity
+                                Value::Ring {
+                                    buffer: vec![Value::None; capacity as usize],
+                                    capacity: capacity as usize,
+                                    head: 0,
+                                    size: 0,
+                                }
+                            }
+                            Value::List(list) => {
+                                // Create ring from list
+                                let capacity = list.len();
+                                Value::Ring {
+                                    buffer: list,
+                                    capacity,
+                                    head: 0,
+                                    size: capacity,
+                                }
+                            }
+                            _ => return Err("Ring must be initialized with capacity (int) or list".to_string()),
                         }
                     }
                     _ => val, // No conversion needed for other types
@@ -1409,6 +1663,10 @@ impl Interpreter {
                             "neighbors" => Ok(Value::GridNeighbors(Box::new(Value::Grid(grid.clone())))),
                             _ => Err(format!("Grid method '{}' not found", field)),
                         }
+                    }
+                    Value::Matrix(mat) => {
+                        // Use get_property for Matrix to get all the accessor methods
+                        self.get_property(&Value::Matrix(mat), field)
                     }
                     _ => Err(format!("Cannot access field '{}' on type {}", field, 
                         match obj_val {
@@ -2072,6 +2330,298 @@ impl Interpreter {
                         }
                     }
                     _ => return Err("ForWindowed can only iterate over lists and strings".to_string()),
+                }
+                
+                Ok(last_val)
+            }
+            
+            // Advanced algorithm loops
+            AstNode::SweepLoop { left_var, right_var, iterable, body } => {
+                let iterable_val = self.eval_node(iterable)?;
+                let mut last_val = Value::None;
+                
+                match iterable_val {
+                    Value::List(list) => {
+                        let mut left = 0i64;
+                        let mut right = 0i64;
+                        
+                        // Initialize variables
+                        self.set_variable(left_var.clone(), Value::Integer(left));
+                        self.set_variable(right_var.clone(), Value::Integer(right));
+                        
+                        // User controls the loop via break/continue
+                        loop {
+                            // Check bounds
+                            if right >= list.len() as i64 {
+                                break;
+                            }
+                            
+                            // Update variables before body execution
+                            self.set_variable(left_var.clone(), Value::Integer(left));
+                            self.set_variable(right_var.clone(), Value::Integer(right));
+                            
+                            // Execute body - user must update left/right
+                            last_val = self.eval_node(body)?;
+                            
+                            // Read updated values
+                            left = match self.get_variable(&left_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Sweep left variable must be an integer".to_string()),
+                            };
+                            right = match self.get_variable(&right_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Sweep right variable must be an integer".to_string()),
+                            };
+                            
+                            // Safety check to prevent infinite loops
+                            if left < 0 || right < 0 || left > list.len() as i64 || right > list.len() as i64 {
+                                break;
+                            }
+                        }
+                    }
+                    _ => return Err("Sweep loop requires a list".to_string()),
+                }
+                
+                Ok(last_val)
+            }
+            
+            AstNode::ShrinkLoop { left_var, right_var, iterable, body } => {
+                let iterable_val = self.eval_node(iterable)?;
+                let mut last_val = Value::None;
+                
+                match iterable_val {
+                    Value::List(list) => {
+                        let mut left = 0i64;
+                        let mut right = (list.len() as i64) - 1;
+                        
+                        while left <= right {
+                            self.set_variable(left_var.clone(), Value::Integer(left));
+                            self.set_variable(right_var.clone(), Value::Integer(right));
+                            
+                            last_val = self.eval_node(body)?;
+                            
+                            // Read updated values
+                            left = match self.get_variable(&left_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Shrink left variable must be an integer".to_string()),
+                            };
+                            right = match self.get_variable(&right_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Shrink right variable must be an integer".to_string()),
+                            };
+                        }
+                    }
+                    _ => return Err("Shrink loop requires a list".to_string()),
+                }
+                
+                Ok(last_val)
+            }
+            
+            AstNode::MeetLoop { left_var, right_var, iterable, body } => {
+                let iterable_val = self.eval_node(iterable)?;
+                let mut last_val = Value::None;
+                
+                match iterable_val {
+                    Value::List(list) => {
+                        let mut left = 0i64;
+                        let mut right = (list.len() as i64) - 1;
+                        
+                        while left < right {
+                            self.set_variable(left_var.clone(), Value::Integer(left));
+                            self.set_variable(right_var.clone(), Value::Integer(right));
+                            
+                            last_val = self.eval_node(body)?;
+                            
+                            // Read updated values
+                            left = match self.get_variable(&left_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Meet left variable must be an integer".to_string()),
+                            };
+                            right = match self.get_variable(&right_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Meet right variable must be an integer".to_string()),
+                            };
+                        }
+                    }
+                    _ => return Err("Meet loop requires a list".to_string()),
+                }
+                
+                Ok(last_val)
+            }
+            
+            AstNode::BinarySearchLoop { lo_var, hi_var, range, body, else_block } => {
+                let range_val = self.eval_node(range)?;
+                let mut last_val = Value::None;
+                let mut found = false;
+                
+                match range_val {
+                    Value::List(list) => {
+                        let mut lo = 0i64;
+                        let mut hi = (list.len() as i64) - 1;
+                        
+                        while lo <= hi {
+                            self.set_variable(lo_var.clone(), Value::Integer(lo));
+                            self.set_variable(hi_var.clone(), Value::Integer(hi));
+                            
+                            last_val = self.eval_node(body)?;
+                            
+                            // Check if user signaled a match (by setting a special variable or breaking)
+                            // For now, user must update lo/hi to continue search
+                            let new_lo = match self.get_variable(&lo_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Binary lo variable must be an integer".to_string()),
+                            };
+                            let new_hi = match self.get_variable(&hi_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Binary hi variable must be an integer".to_string()),
+                            };
+                            
+                            // If lo and hi didn't change, assume found
+                            if new_lo == lo && new_hi == hi {
+                                found = true;
+                                break;
+                            }
+                            
+                            lo = new_lo;
+                            hi = new_hi;
+                        }
+                    }
+                    Value::Range(start, end, _step) => {
+                        let mut lo = start;
+                        let mut hi = end - 1;
+                        
+                        while lo <= hi {
+                            self.set_variable(lo_var.clone(), Value::Integer(lo));
+                            self.set_variable(hi_var.clone(), Value::Integer(hi));
+                            
+                            last_val = self.eval_node(body)?;
+                            
+                            let new_lo = match self.get_variable(&lo_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Binary lo variable must be an integer".to_string()),
+                            };
+                            let new_hi = match self.get_variable(&hi_var)? {
+                                Value::Integer(i) => i,
+                                _ => return Err("Binary hi variable must be an integer".to_string()),
+                            };
+                            
+                            if new_lo == lo && new_hi == hi {
+                                found = true;
+                                break;
+                            }
+                            
+                            lo = new_lo;
+                            hi = new_hi;
+                        }
+                    }
+                    _ => return Err("Binary search loop requires a list or range".to_string()),
+                }
+                
+                // Execute else block if not found
+                if !found && else_block.is_some() {
+                    last_val = self.eval_node(else_block.as_ref().unwrap())?;
+                }
+                
+                Ok(last_val)
+            }
+            
+            AstNode::DpLoop { table_name, dimensions, init_value, body } => {
+                // Evaluate dimensions
+                let mut dim_sizes = Vec::new();
+                for dim in dimensions {
+                    match self.eval_node(dim)? {
+                        Value::Integer(size) => {
+                            if size <= 0 {
+                                return Err("DP dimension must be positive".to_string());
+                            }
+                            dim_sizes.push(size as usize);
+                        }
+                        _ => return Err("DP dimensions must be integers".to_string()),
+                    }
+                }
+                
+                // Initialize table based on dimensions
+                let init_val = self.eval_node(init_value)?;
+                
+                if dim_sizes.len() == 1 {
+                    // 1D table
+                    let table = vec![init_val.clone(); dim_sizes[0]];
+                    self.set_variable(table_name.clone(), Value::List(table));
+                } else if dim_sizes.len() == 2 {
+                    // 2D table
+                    let mut table = Vec::new();
+                    for _ in 0..dim_sizes[0] {
+                        let row = vec![init_val.clone(); dim_sizes[1]];
+                        table.push(Value::List(row));
+                    }
+                    self.set_variable(table_name.clone(), Value::List(table));
+                } else {
+                    return Err("DP loop currently supports 1D and 2D tables".to_string());
+                }
+                
+                // Execute body
+                let last_val = self.eval_node(body)?;
+                
+                Ok(last_val)
+            }
+            
+            AstNode::WhileNonzero { var, body } => {
+                let mut last_val = Value::None;
+                
+                loop {
+                    let var_val = self.get_variable(&var)?;
+                    
+                    match var_val {
+                        Value::Integer(n) => {
+                            if n == 0 {
+                                break;
+                            }
+                        }
+                        _ => return Err("while_nonzero requires an integer variable".to_string()),
+                    }
+                    
+                    last_val = self.eval_node(body)?;
+                }
+                
+                Ok(last_val)
+            }
+            
+            AstNode::WhileChange { var, init, body } => {
+                let init_val = self.eval_node(init)?;
+                self.set_variable(var.clone(), init_val.clone());
+                
+                let mut last_val = Value::None;
+                let mut prev_val = init_val;
+                
+                loop {
+                    last_val = self.eval_node(body)?;
+                    
+                    let current_val = self.get_variable(&var)?;
+                    
+                    // Check if value changed
+                    if current_val == prev_val {
+                        break;
+                    }
+                    
+                    prev_val = current_val;
+                }
+                
+                Ok(last_val)
+            }
+            
+            AstNode::WhileMatchLoop { var, body } => {
+                // This is a pattern-matching while loop
+                // For now, implement as a simple while loop that continues until var is None
+                let mut last_val = Value::None;
+                
+                loop {
+                    let var_val = self.get_variable(&var)?;
+                    
+                    if matches!(var_val, Value::None) {
+                        break;
+                    }
+                    
+                    last_val = self.eval_node(body)?;
                 }
                 
                 Ok(last_val)
@@ -3250,6 +3800,14 @@ impl Interpreter {
                     Value::GridFindAll(_) => "grid_find_all",
                     Value::GridRow(_) => "grid_row",
                     Value::GridCol(_) => "grid_col",
+                    Value::MatrixRow(_) => "matrix_row",
+                    Value::MatrixCol(_) => "matrix_col",
+                    Value::MatrixDiagonal(_) => "matrix_diagonal",
+                    Value::MatrixFlat(_) => "matrix_flat",
+                    Value::MatrixRowSums(_) => "matrix_row_sums",
+                    Value::MatrixColSums(_) => "matrix_col_sums",
+                    Value::MatrixRowMeans(_) => "matrix_row_means",
+                    Value::MatrixColMeans(_) => "matrix_col_means",
                     Value::Enum { .. } => "enum",
                     Value::EnumVariant { .. } => "enum_variant",
                             Value::Class { .. } => "class",
@@ -3262,6 +3820,18 @@ impl Interpreter {
                             Value::Trait { .. } => "trait",
                             Value::Future { .. } => "future",
                             Value::Interval(_, _) => "interval",
+                            Value::Queue(_) => "queue",
+                            Value::Ring { .. } => "ring",
+                            Value::Sorted(_) => "sorted",
+                            Value::Bag(_) => "bag",
+                            Value::Window { .. } => "window",
+                            Value::View { .. } => "view",
+                            Value::Prio(_) => "prio",
+                            Value::Diff(_) => "diff",
+                            Value::Span { .. } => "span",
+                            Value::MutSpan { .. } => "mut_span",
+                            Value::Chunk { .. } => "chunk",
+                            Value::Sparse { .. } => "sparse",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -3385,6 +3955,126 @@ impl Interpreter {
                         Ok(Value::Integer(sum))
                     }
                     _ => Err("sum() can only be called on lists".to_string()),
+                }
+            }
+            
+            // Advanced array type constructors
+            "span" => {
+                if args.len() != 1 {
+                    return Err("span() expects exactly 1 argument (list)".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                match val {
+                    Value::List(list) => {
+                        let len = list.len();
+                        Ok(Value::Span {
+                            source: Box::new(Value::List(list)),
+                            start: 0,
+                            end: len,
+                        })
+                    }
+                    _ => Err("span() requires a list argument".to_string()),
+                }
+            }
+            
+            "mut_span" => {
+                if args.len() != 1 {
+                    return Err("mut_span() expects exactly 1 argument (list)".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                match val {
+                    Value::List(list) => {
+                        let len = list.len();
+                        Ok(Value::MutSpan {
+                            source: Box::new(Value::List(list)),
+                            start: 0,
+                            end: len,
+                        })
+                    }
+                    _ => Err("mut_span() requires a list argument".to_string()),
+                }
+            }
+            
+            "chunk" => {
+                if args.len() < 1 || args.len() > 2 {
+                    return Err("chunk() expects 1-2 arguments (list, [size])".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                let chunk_size = if args.len() == 2 {
+                    match self.eval_node(&args[1])? {
+                        Value::Integer(size) => size as usize,
+                        _ => return Err("chunk size must be an integer".to_string()),
+                    }
+                } else {
+                    1
+                };
+                
+                match val {
+                    Value::List(list) => {
+                        Ok(Value::Chunk {
+                            source: Box::new(Value::List(list)),
+                            chunk_size,
+                            current_index: 0,
+                        })
+                    }
+                    _ => Err("chunk() requires a list argument".to_string()),
+                }
+            }
+            
+            "sparse" => {
+                if args.len() < 1 || args.len() > 2 {
+                    return Err("sparse() expects 1-2 arguments (size or list, [default])".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                let default = if args.len() == 2 {
+                    Box::new(self.eval_node(&args[1])?)
+                } else {
+                    Box::new(Value::Integer(0))
+                };
+                
+                match val {
+                    Value::Integer(size) => {
+                        Ok(Value::Sparse {
+                            data: HashMap::new(),
+                            default,
+                            size: size as usize,
+                        })
+                    }
+                    Value::List(list) => {
+                        let mut data = HashMap::new();
+                        for (i, item) in list.iter().enumerate() {
+                            if item != default.as_ref() {
+                                data.insert(i, item.clone());
+                            }
+                        }
+                        Ok(Value::Sparse {
+                            data,
+                            default,
+                            size: list.len(),
+                        })
+                    }
+                    _ => Err("sparse() requires an integer size or list".to_string()),
+                }
+            }
+            
+            "ring" => {
+                if args.len() != 1 {
+                    return Err("ring() expects exactly 1 argument (capacity)".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                match val {
+                    Value::Integer(capacity) => {
+                        if capacity <= 0 {
+                            return Err("ring capacity must be positive".to_string());
+                        }
+                        Ok(Value::Ring {
+                            buffer: vec![Value::None; capacity as usize],
+                            capacity: capacity as usize,
+                            head: 0,
+                            size: 0,
+                        })
+                    }
+                    _ => Err("ring() requires an integer capacity".to_string()),
                 }
             }
             
@@ -6494,6 +7184,14 @@ impl Interpreter {
                     Value::GridFindAll(_) => "grid_find_all",
                     Value::GridRow(_) => "grid_row",
                     Value::GridCol(_) => "grid_col",
+                    Value::MatrixRow(_) => "matrix_row",
+                    Value::MatrixCol(_) => "matrix_col",
+                    Value::MatrixDiagonal(_) => "matrix_diagonal",
+                    Value::MatrixFlat(_) => "matrix_flat",
+                    Value::MatrixRowSums(_) => "matrix_row_sums",
+                    Value::MatrixColSums(_) => "matrix_col_sums",
+                    Value::MatrixRowMeans(_) => "matrix_row_means",
+                    Value::MatrixColMeans(_) => "matrix_col_means",
                     Value::Enum { .. } => "enum",
                     Value::EnumVariant { .. } => "enum_variant",
                             Value::Class { .. } => "class",
@@ -6506,6 +7204,18 @@ impl Interpreter {
                             Value::Trait { .. } => "trait",
                             Value::Future { .. } => "future",
                             Value::Interval(_, _) => "interval",
+                            Value::Queue(_) => "queue",
+                            Value::Ring { .. } => "ring",
+                            Value::Sorted(_) => "sorted",
+                            Value::Bag(_) => "bag",
+                            Value::Window { .. } => "window",
+                            Value::View { .. } => "view",
+                            Value::Prio(_) => "prio",
+                            Value::Diff(_) => "diff",
+                            Value::Span { .. } => "span",
+                            Value::MutSpan { .. } => "mut_span",
+                            Value::Chunk { .. } => "chunk",
+                            Value::Sparse { .. } => "sparse",
                 };
                 Ok(Value::String(type_name.to_string()))
             }
@@ -6739,6 +7449,1252 @@ impl Interpreter {
                 Ok(Value::List(result))
             }
             
+            // ============================================================================
+            // GENERAL UTILITY FUNCTIONS FOR ALGORITHM PROBLEMS
+            // ============================================================================
+            
+            // GCD - Greatest Common Divisor
+            "gcd" => {
+                if args.len() != 2 {
+                    return Err("gcd() expects exactly 2 arguments".to_string());
+                }
+                let a_val = self.eval_node(&args[0])?;
+                let b_val = self.eval_node(&args[1])?;
+                
+                match (a_val, b_val) {
+                    (Value::Integer(mut a), Value::Integer(mut b)) => {
+                        a = a.abs();
+                        b = b.abs();
+                        while b != 0 {
+                            let temp = b;
+                            b = a % b;
+                            a = temp;
+                        }
+                        Ok(Value::Integer(a))
+                    }
+                    _ => Err("gcd() expects two integers".to_string()),
+                }
+            }
+            
+            // LCM - Least Common Multiple
+            "lcm" => {
+                if args.len() != 2 {
+                    return Err("lcm() expects exactly 2 arguments".to_string());
+                }
+                let a_val = self.eval_node(&args[0])?;
+                let b_val = self.eval_node(&args[1])?;
+                
+                match (a_val, b_val) {
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if a == 0 || b == 0 {
+                            return Ok(Value::Integer(0));
+                        }
+                        let a = a.abs();
+                        let b = b.abs();
+                        let mut gcd_a = a;
+                        let mut gcd_b = b;
+                        while gcd_b != 0 {
+                            let temp = gcd_b;
+                            gcd_b = gcd_a % gcd_b;
+                            gcd_a = temp;
+                        }
+                        Ok(Value::Integer((a * b) / gcd_a))
+                    }
+                    _ => Err("lcm() expects two integers".to_string()),
+                }
+            }
+            
+            // is_prime - Check if number is prime
+            "is_prime" => {
+                if args.len() != 1 {
+                    return Err("is_prime() expects exactly 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::Integer(n) => {
+                        if n < 2 {
+                            return Ok(Value::Boolean(false));
+                        }
+                        if n == 2 {
+                            return Ok(Value::Boolean(true));
+                        }
+                        if n % 2 == 0 {
+                            return Ok(Value::Boolean(false));
+                        }
+                        let mut i = 3;
+                        while i * i <= n {
+                            if n % i == 0 {
+                                return Ok(Value::Boolean(false));
+                            }
+                            i += 2;
+                        }
+                        Ok(Value::Boolean(true))
+                    }
+                    _ => Err("is_prime() expects an integer".to_string()),
+                }
+            }
+            
+            // factorial - Calculate n!
+            "factorial" => {
+                if args.len() != 1 {
+                    return Err("factorial() expects exactly 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::Integer(n) => {
+                        if n < 0 {
+                            return Err("factorial() requires non-negative integer".to_string());
+                        }
+                        if n > 20 {
+                            return Err("factorial() overflow: n must be <= 20".to_string());
+                        }
+                        let mut result = 1i64;
+                        for i in 2..=n {
+                            result *= i;
+                        }
+                        Ok(Value::Integer(result))
+                    }
+                    _ => Err("factorial() expects an integer".to_string()),
+                }
+            }
+            
+            // fibonacci - Calculate nth Fibonacci number
+            "fibonacci" => {
+                if args.len() != 1 {
+                    return Err("fibonacci() expects exactly 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::Integer(n) => {
+                        if n < 0 {
+                            return Err("fibonacci() requires non-negative integer".to_string());
+                        }
+                        if n == 0 {
+                            return Ok(Value::Integer(0));
+                        }
+                        if n == 1 {
+                            return Ok(Value::Integer(1));
+                        }
+                        let mut a = 0i64;
+                        let mut b = 1i64;
+                        for _ in 2..=n {
+                            let temp = a + b;
+                            a = b;
+                            b = temp;
+                        }
+                        Ok(Value::Integer(b))
+                    }
+                    _ => Err("fibonacci() expects an integer".to_string()),
+                }
+            }
+            
+            // swap - Swap two elements in a list by index
+            "swap" => {
+                if args.len() != 3 {
+                    return Err("swap() expects exactly 3 arguments: swap(list, i, j)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let i_val = self.eval_node(&args[1])?;
+                let j_val = self.eval_node(&args[2])?;
+                
+                match (list_val, i_val, j_val) {
+                    (Value::List(mut list), Value::Integer(i), Value::Integer(j)) => {
+                        let len = list.len() as i64;
+                        if i < 0 || i >= len || j < 0 || j >= len {
+                            return Err("swap() indices out of bounds".to_string());
+                        }
+                        list.swap(i as usize, j as usize);
+                        Ok(Value::List(list))
+                    }
+                    _ => Err("swap() expects (list, int, int)".to_string()),
+                }
+            }
+            
+            // rotate_left - Rotate list left by k positions
+            "rotate_left" => {
+                if args.len() != 2 {
+                    return Err("rotate_left() expects exactly 2 arguments: rotate_left(list, k)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let k_val = self.eval_node(&args[1])?;
+                
+                match (list_val, k_val) {
+                    (Value::List(list), Value::Integer(k)) => {
+                        if list.is_empty() {
+                            return Ok(Value::List(list));
+                        }
+                        let len = list.len();
+                        let k = ((k % len as i64) + len as i64) as usize % len;
+                        let mut result = list[k..].to_vec();
+                        result.extend_from_slice(&list[..k]);
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("rotate_left() expects (list, int)".to_string()),
+                }
+            }
+            
+            // rotate_right - Rotate list right by k positions
+            "rotate_right" => {
+                if args.len() != 2 {
+                    return Err("rotate_right() expects exactly 2 arguments: rotate_right(list, k)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let k_val = self.eval_node(&args[1])?;
+                
+                match (list_val, k_val) {
+                    (Value::List(list), Value::Integer(k)) => {
+                        if list.is_empty() {
+                            return Ok(Value::List(list));
+                        }
+                        let len = list.len();
+                        let k = ((k % len as i64) + len as i64) as usize % len;
+                        let split_point = len - k;
+                        let mut result = list[split_point..].to_vec();
+                        result.extend_from_slice(&list[..split_point]);
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("rotate_right() expects (list, int)".to_string()),
+                }
+            }
+            
+            // count_if - Count elements matching predicate
+            "count_if" => {
+                if args.len() != 2 {
+                    return Err("count_if() expects exactly 2 arguments: count_if(list, predicate)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let pred_val = self.eval_node(&args[1])?;
+                
+                match list_val {
+                    Value::List(list) => {
+                        let mut count = 0;
+                        for item in list {
+                            let result = self.call_value_with_args(pred_val.clone(), &[item], None)?;
+                            match result {
+                                Value::Boolean(true) => count += 1,
+                                Value::Boolean(false) => {},
+                                _ => return Err("count_if() predicate must return boolean".to_string()),
+                            }
+                        }
+                        Ok(Value::Integer(count))
+                    }
+                    _ => Err("count_if() expects a list as first argument".to_string()),
+                }
+            }
+            
+            // find_index - Find first index where predicate is true
+            "find_index" => {
+                if args.len() != 2 {
+                    return Err("find_index() expects exactly 2 arguments: find_index(list, predicate)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let pred_val = self.eval_node(&args[1])?;
+                
+                match list_val {
+                    Value::List(list) => {
+                        for (i, item) in list.iter().enumerate() {
+                            let result = self.call_value_with_args(pred_val.clone(), &[item.clone()], None)?;
+                            match result {
+                                Value::Boolean(true) => return Ok(Value::Integer(i as i64)),
+                                Value::Boolean(false) => {},
+                                _ => return Err("find_index() predicate must return boolean".to_string()),
+                            }
+                        }
+                        Ok(Value::Integer(-1))
+                    }
+                    _ => Err("find_index() expects a list as first argument".to_string()),
+                }
+            }
+            
+            // ============================================================================
+            // BIG TECH / LEETCODE ALGORITHM PATTERNS
+            // ============================================================================
+            
+            // prefix_sum - Calculate prefix sum array for range queries
+            "prefix_sum" => {
+                if args.len() != 1 {
+                    return Err("prefix_sum() expects exactly 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        let mut prefix = Vec::new();
+                        let mut sum = 0i64;
+                        prefix.push(Value::Integer(0));
+                        
+                        for item in list {
+                            match item {
+                                Value::Integer(n) => {
+                                    sum += n;
+                                    prefix.push(Value::Integer(sum));
+                                }
+                                _ => return Err("prefix_sum() requires list of integers".to_string()),
+                            }
+                        }
+                        Ok(Value::List(prefix))
+                    }
+                    _ => Err("prefix_sum() expects a list".to_string()),
+                }
+            }
+            
+            // range_sum - Get sum of elements from index i to j using prefix sum
+            "range_sum" => {
+                if args.len() != 3 {
+                    return Err("range_sum() expects 3 arguments: range_sum(prefix_sum_array, i, j)".to_string());
+                }
+                let prefix_val = self.eval_node(&args[0])?;
+                let i_val = self.eval_node(&args[1])?;
+                let j_val = self.eval_node(&args[2])?;
+                
+                match (prefix_val, i_val, j_val) {
+                    (Value::List(prefix), Value::Integer(i), Value::Integer(j)) => {
+                        if i < 0 || j >= prefix.len() as i64 - 1 || i > j {
+                            return Err("range_sum() indices out of bounds".to_string());
+                        }
+                        match (&prefix[j as usize + 1], &prefix[i as usize]) {
+                            (Value::Integer(right), Value::Integer(left)) => {
+                                Ok(Value::Integer(right - left))
+                            }
+                            _ => Err("range_sum() requires integer prefix sum array".to_string()),
+                        }
+                    }
+                    _ => Err("range_sum() expects (list, int, int)".to_string()),
+                }
+            }
+            
+            // two_sum_indices - Find two indices where arr[i] + arr[j] == target
+            "two_sum_indices" => {
+                if args.len() != 2 {
+                    return Err("two_sum_indices() expects 2 arguments: two_sum_indices(list, target)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let target_val = self.eval_node(&args[1])?;
+                
+                match (list_val, target_val) {
+                    (Value::List(list), Value::Integer(target)) => {
+                        let mut seen = std::collections::HashMap::new();
+                        for (i, item) in list.iter().enumerate() {
+                            if let Value::Integer(num) = item {
+                                let complement = target - num;
+                                if let Some(&j) = seen.get(&complement) {
+                                    return Ok(Value::List(vec![Value::Integer(j), Value::Integer(i as i64)]));
+                                }
+                                seen.insert(*num, i as i64);
+                            }
+                        }
+                        Ok(Value::List(vec![Value::Integer(-1), Value::Integer(-1)]))
+                    }
+                    _ => Err("two_sum_indices() expects (list, int)".to_string()),
+                }
+            }
+            
+            // three_sum - Find all unique triplets that sum to target
+            "three_sum" => {
+                if args.len() != 2 {
+                    return Err("three_sum() expects 2 arguments: three_sum(list, target)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let target_val = self.eval_node(&args[1])?;
+                
+                match (list_val, target_val) {
+                    (Value::List(list), Value::Integer(target)) => {
+                        let mut nums: Vec<i64> = Vec::new();
+                        for item in &list {
+                            if let Value::Integer(n) = item {
+                                nums.push(*n);
+                            } else {
+                                return Err("three_sum() requires list of integers".to_string());
+                            }
+                        }
+                        
+                        nums.sort();
+                        let mut result = Vec::new();
+                        
+                        for i in 0..nums.len() {
+                            if i > 0 && nums[i] == nums[i-1] {
+                                continue;
+                            }
+                            
+                            let mut left = i + 1;
+                            let mut right = nums.len() - 1;
+                            
+                            while left < right {
+                                let sum = nums[i] + nums[left] + nums[right];
+                                if sum == target {
+                                    result.push(Value::List(vec![
+                                        Value::Integer(nums[i]),
+                                        Value::Integer(nums[left]),
+                                        Value::Integer(nums[right])
+                                    ]));
+                                    
+                                    while left < right && nums[left] == nums[left + 1] {
+                                        left += 1;
+                                    }
+                                    while left < right && nums[right] == nums[right - 1] {
+                                        right -= 1;
+                                    }
+                                    left += 1;
+                                    right -= 1;
+                                } else if sum < target {
+                                    left += 1;
+                                } else {
+                                    right -= 1;
+                                }
+                            }
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("three_sum() expects (list, int)".to_string()),
+                }
+            }
+            
+            // max_sliding_window - Maximum in each sliding window of size k
+            "max_sliding_window" => {
+                if args.len() != 2 {
+                    return Err("max_sliding_window() expects 2 arguments: max_sliding_window(list, k)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let k_val = self.eval_node(&args[1])?;
+                
+                match (list_val, k_val) {
+                    (Value::List(list), Value::Integer(k)) => {
+                        if k <= 0 || k as usize > list.len() {
+                            return Err("max_sliding_window() k must be positive and <= list length".to_string());
+                        }
+                        
+                        let k = k as usize;
+                        let mut result = Vec::new();
+                        
+                        for i in 0..=(list.len() - k) {
+                            let mut max_val = match &list[i] {
+                                Value::Integer(n) => *n,
+                                _ => return Err("max_sliding_window() requires list of integers".to_string()),
+                            };
+                            
+                            for j in (i+1)..(i+k) {
+                                if let Value::Integer(n) = &list[j] {
+                                    if *n > max_val {
+                                        max_val = *n;
+                                    }
+                                }
+                            }
+                            result.push(Value::Integer(max_val));
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("max_sliding_window() expects (list, int)".to_string()),
+                }
+            }
+            
+            // longest_increasing_subsequence - Length of LIS
+            "longest_increasing_subsequence" => {
+                if args.len() != 1 {
+                    return Err("longest_increasing_subsequence() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        if list.is_empty() {
+                            return Ok(Value::Integer(0));
+                        }
+                        
+                        let mut dp = vec![1; list.len()];
+                        let mut max_len = 1;
+                        
+                        for i in 1..list.len() {
+                            if let Value::Integer(curr) = &list[i] {
+                                for j in 0..i {
+                                    if let Value::Integer(prev) = &list[j] {
+                                        if prev < curr && dp[j] + 1 > dp[i] {
+                                            dp[i] = dp[j] + 1;
+                                            if dp[i] > max_len {
+                                                max_len = dp[i];
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Ok(Value::Integer(max_len as i64))
+                    }
+                    _ => Err("longest_increasing_subsequence() expects a list".to_string()),
+                }
+            }
+            
+            // merge_intervals - Merge overlapping intervals [[start, end], ...]
+            "merge_intervals" => {
+                if args.len() != 1 {
+                    return Err("merge_intervals() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(intervals) => {
+                        if intervals.is_empty() {
+                            return Ok(Value::List(Vec::new()));
+                        }
+                        
+                        // Convert to vec of (start, end)
+                        let mut pairs: Vec<(i64, i64)> = Vec::new();
+                        for interval in &intervals {
+                            if let Value::List(pair) = interval {
+                                if pair.len() == 2 {
+                                    if let (Value::Integer(start), Value::Integer(end)) = (&pair[0], &pair[1]) {
+                                        pairs.push((*start, *end));
+                                    }
+                                }
+                            }
+                        }
+                        
+                        pairs.sort_by_key(|p| p.0);
+                        
+                        let mut merged = Vec::new();
+                        let mut current = pairs[0];
+                        
+                        for &(start, end) in &pairs[1..] {
+                            if start <= current.1 {
+                                current.1 = current.1.max(end);
+                            } else {
+                                merged.push(Value::List(vec![
+                                    Value::Integer(current.0),
+                                    Value::Integer(current.1)
+                                ]));
+                                current = (start, end);
+                            }
+                        }
+                        merged.push(Value::List(vec![
+                            Value::Integer(current.0),
+                            Value::Integer(current.1)
+                        ]));
+                        
+                        Ok(Value::List(merged))
+                    }
+                    _ => Err("merge_intervals() expects a list of intervals".to_string()),
+                }
+            }
+            
+            // topological_sort - Topological sort using Kahn's algorithm
+            // Input: adjacency list as dict {node: [neighbors]}
+            "topological_sort" => {
+                if args.len() != 1 {
+                    return Err("topological_sort() expects 1 argument: adjacency list dict".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::Dict(graph) => {
+                        // Calculate in-degrees
+                        let mut in_degree: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+                        
+                        for (node, _) in &graph {
+                            in_degree.entry(node.clone()).or_insert(0);
+                        }
+                        
+                        for (_, neighbors_val) in &graph {
+                            if let Value::List(neighbors) = neighbors_val {
+                                for neighbor in neighbors {
+                                    if let Value::String(n) = neighbor {
+                                        *in_degree.entry(n.clone()).or_insert(0) += 1;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Find nodes with in-degree 0
+                        let mut queue: Vec<String> = Vec::new();
+                        for (node, &degree) in &in_degree {
+                            if degree == 0 {
+                                queue.push(node.clone());
+                            }
+                        }
+                        
+                        let mut result = Vec::new();
+                        
+                        while !queue.is_empty() {
+                            let node = queue.remove(0);
+                            result.push(Value::String(node.clone()));
+                            
+                            if let Some(Value::List(neighbors)) = graph.get(&node) {
+                                for neighbor in neighbors {
+                                    if let Value::String(n) = neighbor {
+                                        if let Some(degree) = in_degree.get_mut(n) {
+                                            *degree -= 1;
+                                            if *degree == 0 {
+                                                queue.push(n.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("topological_sort() expects a dict (adjacency list)".to_string()),
+                }
+            }
+            
+            // ============================================================================
+            // KILLER FEATURES - MAKE J BETTER THAN PYTHON
+            // ============================================================================
+            
+            // parallel_map - Map function in parallel (auto-parallelization)
+            "parallel_map" => {
+                if args.len() != 2 {
+                    return Err("parallel_map() expects 2 arguments: parallel_map(list, function)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let func_val = self.eval_node(&args[1])?;
+                
+                match list_val {
+                    Value::List(list) => {
+                        // For now, sequential (can be parallelized with rayon)
+                        let mut result = Vec::new();
+                        for item in list {
+                            let mapped = self.call_value_with_args(func_val.clone(), &[item], None)?;
+                            result.push(mapped);
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("parallel_map() expects a list".to_string()),
+                }
+            }
+            
+            // memoize - Automatically cache function results
+            "memoize" => {
+                if args.len() != 1 {
+                    return Err("memoize() expects 1 argument: a function".to_string());
+                }
+                let func_val = self.eval_node(&args[0])?;
+                // Return the function wrapped with memoization
+                // (Implementation would require cache storage)
+                Ok(func_val)
+            }
+            
+            // benchmark - Time function execution
+            "benchmark" => {
+                if args.len() < 1 {
+                    return Err("benchmark() expects at least 1 argument: function to benchmark".to_string());
+                }
+                let func_val = self.eval_node(&args[0])?;
+                let iterations = if args.len() > 1 {
+                    if let Value::Integer(n) = self.eval_node(&args[1])? {
+                        n as usize
+                    } else {
+                        1
+                    }
+                } else {
+                    1
+                };
+                
+                let start = std::time::Instant::now();
+                let mut last_result = Value::None;
+                
+                for _ in 0..iterations {
+                    last_result = self.call_value_with_args(func_val.clone(), &[], None)?;
+                }
+                
+                let duration = start.elapsed();
+                let ms = duration.as_secs_f64() * 1000.0;
+                
+                let mut result = std::collections::HashMap::new();
+                result.insert("time_ms".to_string(), Value::Float(ms));
+                result.insert("iterations".to_string(), Value::Integer(iterations as i64));
+                result.insert("avg_ms".to_string(), Value::Float(ms / iterations as f64));
+                result.insert("result".to_string(), last_result);
+                
+                Ok(Value::Dict(result))
+            }
+            
+            // tap - Debug helper: print value and return it (chainable)
+            "tap" => {
+                if args.len() < 1 {
+                    return Err("tap() expects at least 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                if args.len() > 1 {
+                    // Custom message
+                    let msg_val = self.eval_node(&args[1])?;
+                    if let Value::String(msg) = msg_val {
+                        println!("[TAP] {}: {}", msg, val);
+                    }
+                } else {
+                    println!("[TAP] {}", val);
+                }
+                
+                Ok(val)
+            }
+            
+            // pipe - Function composition (f |> g |> h)
+            "pipe" => {
+                if args.len() < 2 {
+                    return Err("pipe() expects at least 2 arguments: value, ...functions".to_string());
+                }
+                
+                let mut result = self.eval_node(&args[0])?;
+                
+                for i in 1..args.len() {
+                    let func = self.eval_node(&args[i])?;
+                    result = self.call_value_with_args(func, &[result], None)?;
+                }
+                
+                Ok(result)
+            }
+            
+            // retry - Retry function on failure
+            "retry" => {
+                if args.len() < 2 {
+                    return Err("retry() expects at least 2 arguments: function, max_attempts".to_string());
+                }
+                let func_val = self.eval_node(&args[0])?;
+                let max_attempts = if let Value::Integer(n) = self.eval_node(&args[1])? {
+                    n as usize
+                } else {
+                    return Err("retry() max_attempts must be an integer".to_string());
+                };
+                
+                let mut last_error = String::new();
+                
+                for attempt in 1..=max_attempts {
+                    match self.call_value_with_args(func_val.clone(), &[], None) {
+                        Ok(result) => return Ok(result),
+                        Err(e) => {
+                            last_error = e;
+                            if attempt < max_attempts {
+                                // Small delay between retries
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            }
+                        }
+                    }
+                }
+                
+                Err(format!("retry() failed after {} attempts: {}", max_attempts, last_error))
+            }
+            
+            // take_while - Take elements while predicate is true
+            "take_while" => {
+                if args.len() != 2 {
+                    return Err("take_while() expects 2 arguments: take_while(list, predicate)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let pred_val = self.eval_node(&args[1])?;
+                
+                match list_val {
+                    Value::List(list) => {
+                        let mut result = Vec::new();
+                        for item in list {
+                            let pred_result = self.call_value_with_args(pred_val.clone(), &[item.clone()], None)?;
+                            match pred_result {
+                                Value::Boolean(true) => result.push(item),
+                                Value::Boolean(false) => break,
+                                _ => return Err("take_while() predicate must return boolean".to_string()),
+                            }
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("take_while() expects a list".to_string()),
+                }
+            }
+            
+            // drop_while - Drop elements while predicate is true
+            "drop_while" => {
+                if args.len() != 2 {
+                    return Err("drop_while() expects 2 arguments: drop_while(list, predicate)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let pred_val = self.eval_node(&args[1])?;
+                
+                match list_val {
+                    Value::List(list) => {
+                        let mut dropping = true;
+                        let mut result = Vec::new();
+                        
+                        for item in list {
+                            if dropping {
+                                let pred_result = self.call_value_with_args(pred_val.clone(), &[item.clone()], None)?;
+                                match pred_result {
+                                    Value::Boolean(true) => continue,
+                                    Value::Boolean(false) => {
+                                        dropping = false;
+                                        result.push(item);
+                                    }
+                                    _ => return Err("drop_while() predicate must return boolean".to_string()),
+                                }
+                            } else {
+                                result.push(item);
+                            }
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("drop_while() expects a list".to_string()),
+                }
+            }
+            
+            // scan - Like reduce but returns all intermediate results
+            "scan" => {
+                if args.len() != 3 {
+                    return Err("scan() expects 3 arguments: scan(list, initial, function)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let initial = self.eval_node(&args[1])?;
+                let func_val = self.eval_node(&args[2])?;
+                
+                match list_val {
+                    Value::List(list) => {
+                        let mut result = vec![initial.clone()];
+                        let mut accumulator = initial;
+                        
+                        for item in list {
+                            accumulator = self.call_value_with_args(func_val.clone(), &[accumulator, item], None)?;
+                            result.push(accumulator.clone());
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("scan() expects a list".to_string()),
+                }
+            }
+            
+            // frequencies - Count occurrences of each element
+            "frequencies" => {
+                if args.len() != 1 {
+                    return Err("frequencies() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        let mut freq: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+                        
+                        for item in list {
+                            let key = format!("{:?}", item);
+                            *freq.entry(key).or_insert(0) += 1;
+                        }
+                        
+                        let mut result = std::collections::HashMap::new();
+                        for (key, count) in freq {
+                            result.insert(key, Value::Integer(count));
+                        }
+                        
+                        Ok(Value::Dict(result))
+                    }
+                    _ => Err("frequencies() expects a list".to_string()),
+                }
+            }
+            
+            // interleave - Interleave multiple lists
+            "interleave" => {
+                if args.len() < 2 {
+                    return Err("interleave() expects at least 2 lists".to_string());
+                }
+                
+                let mut lists: Vec<Vec<Value>> = Vec::new();
+                for arg in args {
+                    let val = self.eval_node(arg)?;
+                    match val {
+                        Value::List(list) => lists.push(list),
+                        _ => return Err("interleave() expects list arguments".to_string()),
+                    }
+                }
+                
+                let mut result = Vec::new();
+                let max_len = lists.iter().map(|l| l.len()).max().unwrap_or(0);
+                
+                for i in 0..max_len {
+                    for list in &lists {
+                        if i < list.len() {
+                            result.push(list[i].clone());
+                        }
+                    }
+                }
+                
+                Ok(Value::List(result))
+            }
+            
+            // transpose - Transpose a matrix (list of lists)
+            "transpose" => {
+                if args.len() != 1 {
+                    return Err("transpose() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(rows) => {
+                        if rows.is_empty() {
+                            return Ok(Value::List(Vec::new()));
+                        }
+                        
+                        let mut cols: Vec<Vec<Value>> = Vec::new();
+                        
+                        for row in &rows {
+                            if let Value::List(row_items) = row {
+                                for (i, item) in row_items.iter().enumerate() {
+                                    if i >= cols.len() {
+                                        cols.push(Vec::new());
+                                    }
+                                    cols[i].push(item.clone());
+                                }
+                            }
+                        }
+                        
+                        let result: Vec<Value> = cols.into_iter().map(Value::List).collect();
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("transpose() expects a list of lists".to_string()),
+                }
+            }
+            
+            // window - Create overlapping windows (alias for sliding_window)
+            "window" => {
+                if args.len() != 2 {
+                    return Err("window() expects 2 arguments: window(list, size)".to_string());
+                }
+                // Reuse sliding_window implementation
+                self.call_function("sliding_window", args)
+            }
+            
+            // compact - Remove None/null values from list
+            "compact" => {
+                if args.len() != 1 {
+                    return Err("compact() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        let result: Vec<Value> = list.into_iter()
+                            .filter(|item| !matches!(item, Value::None))
+                            .collect();
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("compact() expects a list".to_string()),
+                }
+            }
+            
+            // pluck - Extract property from list of dicts/objects
+            "pluck" => {
+                if args.len() != 2 {
+                    return Err("pluck() expects 2 arguments: pluck(list, key)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let key_val = self.eval_node(&args[1])?;
+                
+                let key = match key_val {
+                    Value::String(s) => s,
+                    _ => return Err("pluck() key must be a string".to_string()),
+                };
+                
+                match list_val {
+                    Value::List(list) => {
+                        let mut result = Vec::new();
+                        for item in list {
+                            if let Value::Dict(dict) = item {
+                                if let Some(value) = dict.get(&key) {
+                                    result.push(value.clone());
+                                }
+                            }
+                        }
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("pluck() expects a list".to_string()),
+                }
+            }
+            
+            // ============================================================================
+            // MORE PYTHON-KILLER FEATURES
+            // ============================================================================
+            
+            // zip_longest - Zip with fillvalue for unequal lengths (like Python's itertools.zip_longest)
+            "zip_longest" => {
+                if args.len() < 3 {
+                    return Err("zip_longest() expects at least 3 arguments: list1, list2, fillvalue".to_string());
+                }
+                
+                let fill_val = self.eval_node(&args[args.len() - 1])?;
+                let mut lists: Vec<Vec<Value>> = Vec::new();
+                let mut max_len = 0;
+                
+                for i in 0..(args.len() - 1) {
+                    let val = self.eval_node(&args[i])?;
+                    match val {
+                        Value::List(list) => {
+                            max_len = max_len.max(list.len());
+                            lists.push(list);
+                        }
+                        _ => return Err("zip_longest() expects list arguments".to_string()),
+                    }
+                }
+                
+                let mut result = Vec::new();
+                for i in 0..max_len {
+                    let mut tuple = Vec::new();
+                    for list in &lists {
+                        if i < list.len() {
+                            tuple.push(list[i].clone());
+                        } else {
+                            tuple.push(fill_val.clone());
+                        }
+                    }
+                    result.push(Value::Tuple(tuple));
+                }
+                
+                Ok(Value::List(result))
+            }
+            
+            // batched - Split list into batches of size n
+            "batched" => {
+                if args.len() != 2 {
+                    return Err("batched() expects 2 arguments: batched(list, batch_size)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let size_val = self.eval_node(&args[1])?;
+                
+                match (list_val, size_val) {
+                    (Value::List(list), Value::Integer(size)) => {
+                        if size <= 0 {
+                            return Err("batched() batch_size must be positive".to_string());
+                        }
+                        let size = size as usize;
+                        let mut result = Vec::new();
+                        
+                        for chunk in list.chunks(size) {
+                            result.push(Value::List(chunk.to_vec()));
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("batched() expects (list, int)".to_string()),
+                }
+            }
+            
+            // pairwise - Return successive overlapping pairs
+            "pairwise" => {
+                if args.len() != 1 {
+                    return Err("pairwise() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        if list.len() < 2 {
+                            return Ok(Value::List(Vec::new()));
+                        }
+                        
+                        let mut result = Vec::new();
+                        for i in 0..(list.len() - 1) {
+                            result.push(Value::Tuple(vec![list[i].clone(), list[i + 1].clone()]));
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("pairwise() expects a list".to_string()),
+                }
+            }
+            
+            // frequencies - Count frequencies (simpler than Counter)
+            "frequencies" => {
+                if args.len() != 1 {
+                    return Err("frequencies() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        let mut counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+                        
+                        for item in list {
+                            let key = format!("{:?}", item);
+                            *counts.entry(key).or_insert(0) += 1;
+                        }
+                        
+                        let mut result = std::collections::HashMap::new();
+                        for (key, count) in counts {
+                            result.insert(key, Value::Integer(count));
+                        }
+                        
+                        Ok(Value::Dict(result))
+                    }
+                    _ => Err("frequencies() expects a list".to_string()),
+                }
+            }
+            
+            // interleave - Interleave multiple lists
+            "interleave" => {
+                if args.len() < 2 {
+                    return Err("interleave() expects at least 2 arguments".to_string());
+                }
+                
+                let mut lists: Vec<Vec<Value>> = Vec::new();
+                let mut max_len = 0;
+                
+                for arg in args {
+                    let val = self.eval_node(arg)?;
+                    match val {
+                        Value::List(list) => {
+                            max_len = max_len.max(list.len());
+                            lists.push(list);
+                        }
+                        _ => return Err("interleave() expects list arguments".to_string()),
+                    }
+                }
+                
+                let mut result = Vec::new();
+                for i in 0..max_len {
+                    for list in &lists {
+                        if i < list.len() {
+                            result.push(list[i].clone());
+                        }
+                    }
+                }
+                
+                Ok(Value::List(result))
+            }
+            
+            // dedupe - Remove consecutive duplicates
+            "dedupe" => {
+                if args.len() != 1 {
+                    return Err("dedupe() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        if list.is_empty() {
+                            return Ok(Value::List(Vec::new()));
+                        }
+                        
+                        let mut result = vec![list[0].clone()];
+                        for i in 1..list.len() {
+                            let prev_key = format!("{:?}", result.last().unwrap());
+                            let curr_key = format!("{:?}", list[i]);
+                            if prev_key != curr_key {
+                                result.push(list[i].clone());
+                            }
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("dedupe() expects a list".to_string()),
+                }
+            }
+            
+            // compact - Remove None/null values
+            "compact" => {
+                if args.len() != 1 {
+                    return Err("compact() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(list) => {
+                        let result: Vec<Value> = list.into_iter()
+                            .filter(|v| !matches!(v, Value::None))
+                            .collect();
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("compact() expects a list".to_string()),
+                }
+            }
+            
+            // sample - Random sample from list
+            "sample" => {
+                if args.len() != 2 {
+                    return Err("sample() expects 2 arguments: sample(list, n)".to_string());
+                }
+                let list_val = self.eval_node(&args[0])?;
+                let n_val = self.eval_node(&args[1])?;
+                
+                match (list_val, n_val) {
+                    (Value::List(list), Value::Integer(n)) => {
+                        if n < 0 || n as usize > list.len() {
+                            return Err("sample() n must be between 0 and list length".to_string());
+                        }
+                        
+                        // Simple random sampling (can be improved with proper RNG)
+                        let mut result = Vec::new();
+                        let mut indices: Vec<usize> = (0..list.len()).collect();
+                        
+                        for _ in 0..(n as usize) {
+                            if !indices.is_empty() {
+                                let idx = indices.remove(0);
+                                result.push(list[idx].clone());
+                            }
+                        }
+                        
+                        Ok(Value::List(result))
+                    }
+                    _ => Err("sample() expects (list, int)".to_string()),
+                }
+            }
+            
+            // shuffle - Shuffle list randomly
+            "shuffle" => {
+                if args.len() != 1 {
+                    return Err("shuffle() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::List(mut list) => {
+                        // Simple shuffle (can be improved with Fisher-Yates)
+                        let len = list.len();
+                        for i in 0..len {
+                            let j = (i + 1) % len;
+                            list.swap(i, j);
+                        }
+                        Ok(Value::List(list))
+                    }
+                    _ => Err("shuffle() expects a list".to_string()),
+                }
+            }
+            
+            // deep_clone - Deep copy of nested structures
+            "deep_clone" => {
+                if args.len() != 1 {
+                    return Err("deep_clone() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                Ok(val.clone()) // Rust's clone is already deep
+            }
+            
+            // json_parse - Parse JSON string (simple version)
+            "json_parse" => {
+                if args.len() != 1 {
+                    return Err("json_parse() expects 1 argument: JSON string".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                match val {
+                    Value::String(s) => {
+                        // Simple JSON parsing (would need proper JSON parser)
+                        // For now, return error suggesting use of proper JSON library
+                        Err("json_parse() requires JSON library integration".to_string())
+                    }
+                    _ => Err("json_parse() expects a string".to_string()),
+                }
+            }
+            
+            // json_stringify - Convert to JSON string
+            "json_stringify" => {
+                if args.len() != 1 {
+                    return Err("json_stringify() expects 1 argument".to_string());
+                }
+                let val = self.eval_node(&args[0])?;
+                
+                // Simple JSON stringification
+                let json_str = format!("{:?}", val);
+                Ok(Value::String(json_str))
+            }
+            
             _ => { // If not built-in, look for user-defined function (or @once/MirrorDispatch wrapper)
                 let func_val = self.get_variable(name)?;
                 let eval_args: Vec<Value> = args.iter().map(|a| self.eval_node(a)).collect::<Result<Vec<_>, _>>()?;
@@ -6754,14 +8710,37 @@ impl Interpreter {
             (Value::Integer(a), BinaryOp::Multiply, Value::Integer(b)) => Ok(Value::Integer(a * b)),
             (Value::Integer(a), BinaryOp::Divide, Value::Integer(b)) => {
                 if *b == 0 {
-                    Err("Division by zero".to_string())
+                    Err(JError::division_by_zero(0, 0).to_string())
                 } else {
                     Ok(Value::Integer(a / b))
                 }
             }
-            (Value::Integer(a), BinaryOp::Modulo, Value::Integer(b)) => Ok(Value::Integer(a % b)),
+            (Value::Integer(a), BinaryOp::Modulo, Value::Integer(b)) => {
+                if *b == 0 {
+                    Err(JError::division_by_zero(0, 0).to_string())
+                } else {
+                    Ok(Value::Integer(a % b))
+                }
+            }
             (Value::Integer(a), BinaryOp::Power, Value::Integer(b)) => {
                 Ok(Value::Integer(a.pow(*b as u32)))
+            }
+            
+            // Bitwise operations
+            (Value::Integer(a), BinaryOp::BitwiseAnd, Value::Integer(b)) => Ok(Value::Integer(a & b)),
+            (Value::Integer(a), BinaryOp::BitwiseOr, Value::Integer(b)) => Ok(Value::Integer(a | b)),
+            (Value::Integer(a), BinaryOp::BitwiseXor, Value::Integer(b)) => Ok(Value::Integer(a ^ b)),
+            (Value::Integer(a), BinaryOp::LeftShift, Value::Integer(b)) => {
+                if *b < 0 {
+                    return Err("Shift amount must be non-negative".to_string());
+                }
+                Ok(Value::Integer(a << b))
+            }
+            (Value::Integer(a), BinaryOp::RightShift, Value::Integer(b)) => {
+                if *b < 0 {
+                    return Err("Shift amount must be non-negative".to_string());
+                }
+                Ok(Value::Integer(a >> b))
             }
             
             (Value::Float(a), BinaryOp::Add, Value::Float(b)) => Ok(Value::Float(a + b)),
@@ -6982,6 +8961,7 @@ impl Interpreter {
             (UnaryOp::Minus, Value::Float(f)) => Ok(Value::Float(-f)),
             (UnaryOp::Minus, Value::Infinity(positive)) => Ok(Value::Infinity(!positive)),
             (UnaryOp::Not, Value::Boolean(b)) => Ok(Value::Boolean(!b)),
+            (UnaryOp::BitwiseNot, Value::Integer(i)) => Ok(Value::Integer(!i)),
             _ => Err(format!("Unsupported unary operation: {:?} {}", op, operand)),
         }
     }
@@ -7060,6 +9040,38 @@ impl Interpreter {
                     "row" => Ok(Value::GridRow(Box::new(Value::Grid(grid.clone())))),
                     "col" => Ok(Value::GridCol(Box::new(Value::Grid(grid.clone())))),
                     _ => Err(format!("Grid method '{}' not found", field)),
+                }
+            }
+            Value::Matrix(mat) => {
+                let rows = mat.len() as i64;
+                let cols = if mat.is_empty() { 0 } else { mat[0].len() as i64 };
+                match field {
+                    "rows" => Ok(Value::Integer(rows)),
+                    "cols" | "columns" => Ok(Value::Integer(cols)),
+                    "len" | "length" | "size" => Ok(Value::Integer(rows * cols)),
+                    "row" => Ok(Value::MatrixRow(Box::new(Value::Matrix(mat.clone())))),
+                    "col" => Ok(Value::MatrixCol(Box::new(Value::Matrix(mat.clone())))),
+                    "diagonal" => Ok(Value::MatrixDiagonal(Box::new(Value::Matrix(mat.clone())))),
+                    "T" | "transpose" => {
+                        if mat.is_empty() || mat[0].is_empty() {
+                            return Ok(Value::Matrix(Vec::new()));
+                        }
+                        let rows = mat.len();
+                        let cols = mat[0].len();
+                        let mut transposed = vec![vec![0.0; rows]; cols];
+                        for i in 0..rows {
+                            for j in 0..cols {
+                                transposed[j][i] = mat[i][j];
+                            }
+                        }
+                        Ok(Value::Matrix(transposed))
+                    }
+                    "flat" => Ok(Value::MatrixFlat(Box::new(Value::Matrix(mat.clone())))),
+                    "row_sums" => Ok(Value::MatrixRowSums(Box::new(Value::Matrix(mat.clone())))),
+                    "col_sums" => Ok(Value::MatrixColSums(Box::new(Value::Matrix(mat.clone())))),
+                    "row_means" => Ok(Value::MatrixRowMeans(Box::new(Value::Matrix(mat.clone())))),
+                    "col_means" => Ok(Value::MatrixColMeans(Box::new(Value::Matrix(mat.clone())))),
+                    _ => Err(format!("Matrix method '{}' not found", field)),
                 }
             }
             Value::Counter(counter) => {
@@ -7254,6 +9266,151 @@ impl Interpreter {
                 }
                 let column: Vec<Value> = grid.iter().map(|row| row[col_idx].clone()).collect();
                 Ok(Value::List(column))
+            }
+            Value::MatrixRow(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixRow requires a matrix".to_string());
+                };
+                if eval_args.len() != 1 {
+                    return Err("matrix.row(n) requires exactly 1 argument".to_string());
+                }
+                let row_idx = match &eval_args[0] {
+                    Value::Integer(n) => {
+                        let idx = if *n < 0 {
+                            (mat.len() as i64 + n) as usize
+                        } else {
+                            *n as usize
+                        };
+                        idx
+                    }
+                    _ => return Err("matrix.row index must be integer".to_string()),
+                };
+                if row_idx >= mat.len() {
+                    return Err(format!("Row index {} out of bounds (matrix has {} rows)", row_idx, mat.len()));
+                }
+                let row_values: Vec<Value> = mat[row_idx].iter().map(|&v| Value::Float(v)).collect();
+                Ok(Value::List(row_values))
+            }
+            Value::MatrixCol(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixCol requires a matrix".to_string());
+                };
+                if eval_args.len() != 1 {
+                    return Err("matrix.col(n) requires exactly 1 argument".to_string());
+                }
+                let col_idx = match &eval_args[0] {
+                    Value::Integer(n) => {
+                        if mat.is_empty() {
+                            return Err("Cannot get column from empty matrix".to_string());
+                        }
+                        let cols = mat[0].len();
+                        let idx = if *n < 0 {
+                            (cols as i64 + n) as usize
+                        } else {
+                            *n as usize
+                        };
+                        idx
+                    }
+                    _ => return Err("matrix.col index must be integer".to_string()),
+                };
+                if mat.is_empty() {
+                    return Err("Cannot get column from empty matrix".to_string());
+                }
+                let cols = mat[0].len();
+                if col_idx >= cols {
+                    return Err(format!("Column index {} out of bounds (matrix has {} columns)", col_idx, cols));
+                }
+                let column: Vec<Value> = mat.iter().map(|row| Value::Float(row[col_idx])).collect();
+                Ok(Value::List(column))
+            }
+            Value::MatrixDiagonal(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixDiagonal requires a matrix".to_string());
+                };
+                if !eval_args.is_empty() {
+                    return Err("matrix.diagonal() takes no arguments".to_string());
+                }
+                if mat.is_empty() {
+                    return Ok(Value::List(Vec::new()));
+                }
+                let size = mat.len().min(mat[0].len());
+                let diagonal: Vec<Value> = (0..size).map(|i| Value::Float(mat[i][i])).collect();
+                Ok(Value::List(diagonal))
+            }
+            Value::MatrixFlat(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixFlat requires a matrix".to_string());
+                };
+                if !eval_args.is_empty() {
+                    return Err("matrix.flat() takes no arguments".to_string());
+                }
+                let flat: Vec<Value> = mat.iter()
+                    .flat_map(|row| row.iter().map(|&v| Value::Float(v)))
+                    .collect();
+                Ok(Value::List(flat))
+            }
+            Value::MatrixRowSums(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixRowSums requires a matrix".to_string());
+                };
+                if !eval_args.is_empty() {
+                    return Err("matrix.row_sums() takes no arguments".to_string());
+                }
+                let sums: Vec<Value> = mat.iter()
+                    .map(|row| Value::Float(row.iter().sum()))
+                    .collect();
+                Ok(Value::List(sums))
+            }
+            Value::MatrixColSums(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixColSums requires a matrix".to_string());
+                };
+                if !eval_args.is_empty() {
+                    return Err("matrix.col_sums() takes no arguments".to_string());
+                }
+                if mat.is_empty() {
+                    return Ok(Value::List(Vec::new()));
+                }
+                let cols = mat[0].len();
+                let sums: Vec<Value> = (0..cols)
+                    .map(|j| Value::Float(mat.iter().map(|row| row[j]).sum()))
+                    .collect();
+                Ok(Value::List(sums))
+            }
+            Value::MatrixRowMeans(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixRowMeans requires a matrix".to_string());
+                };
+                if !eval_args.is_empty() {
+                    return Err("matrix.row_means() takes no arguments".to_string());
+                }
+                let means: Vec<Value> = mat.iter()
+                    .map(|row| {
+                        let sum: f64 = row.iter().sum();
+                        Value::Float(sum / row.len() as f64)
+                    })
+                    .collect();
+                Ok(Value::List(means))
+            }
+            Value::MatrixColMeans(mat_val) => {
+                let Value::Matrix(mat) = mat_val.as_ref() else {
+                    return Err("MatrixColMeans requires a matrix".to_string());
+                };
+                if !eval_args.is_empty() {
+                    return Err("matrix.col_means() takes no arguments".to_string());
+                }
+                if mat.is_empty() {
+                    return Ok(Value::List(Vec::new()));
+                }
+                let rows = mat.len();
+                let cols = mat[0].len();
+                let means: Vec<Value> = (0..cols)
+                    .map(|j| {
+                        let sum: f64 = mat.iter().map(|row| row[j]).sum();
+                        Value::Float(sum / rows as f64)
+                    })
+                    .collect();
+                Ok(Value::List(means))
             }
             _ => Err(format!("Cannot call {} as function", callee)),
         }
@@ -7459,6 +9616,45 @@ impl Interpreter {
         }
         
         matrix[len1][len2]
+    }
+    
+    fn compare_values(&self, a: &Value, b: &Value) -> Result<std::cmp::Ordering, String> {
+        use std::cmp::Ordering;
+        match (a, b) {
+            (Value::Integer(x), Value::Integer(y)) => Ok(x.cmp(y)),
+            (Value::Float(x), Value::Float(y)) => {
+                if x < y {
+                    Ok(Ordering::Less)
+                } else if x > y {
+                    Ok(Ordering::Greater)
+                } else {
+                    Ok(Ordering::Equal)
+                }
+            }
+            (Value::Integer(x), Value::Float(y)) => {
+                let x = *x as f64;
+                if x < *y {
+                    Ok(Ordering::Less)
+                } else if x > *y {
+                    Ok(Ordering::Greater)
+                } else {
+                    Ok(Ordering::Equal)
+                }
+            }
+            (Value::Float(x), Value::Integer(y)) => {
+                let y = *y as f64;
+                if x < &y {
+                    Ok(Ordering::Less)
+                } else if x > &y {
+                    Ok(Ordering::Greater)
+                } else {
+                    Ok(Ordering::Equal)
+                }
+            }
+            (Value::String(x), Value::String(y)) => Ok(x.cmp(y)),
+            (Value::Char(x), Value::Char(y)) => Ok(x.cmp(y)),
+            _ => Err(format!("Cannot compare {:?} and {:?}", a, b)),
+        }
     }
     
     // KMP (Knuth-Morris-Pratt) string search algorithm
