@@ -237,6 +237,52 @@ pub enum AstNode {
         body: Box<AstNode>,
     },
     
+    // Advanced algorithm-specific loops
+    SweepLoop {
+        left_var: String,
+        right_var: String,
+        iterable: Box<AstNode>,
+        body: Box<AstNode>,
+    },
+    ShrinkLoop {
+        left_var: String,
+        right_var: String,
+        iterable: Box<AstNode>,
+        body: Box<AstNode>,
+    },
+    MeetLoop {
+        left_var: String,
+        right_var: String,
+        iterable: Box<AstNode>,
+        body: Box<AstNode>,
+    },
+    BinarySearchLoop {
+        lo_var: String,
+        hi_var: String,
+        range: Box<AstNode>,
+        body: Box<AstNode>,
+        else_block: Option<Box<AstNode>>,
+    },
+    DpLoop {
+        table_name: String,
+        dimensions: Vec<AstNode>,
+        init_value: Box<AstNode>,
+        body: Box<AstNode>,
+    },
+    WhileNonzero {
+        var: String,
+        body: Box<AstNode>,
+    },
+    WhileChange {
+        var: String,
+        init: Box<AstNode>,
+        body: Box<AstNode>,
+    },
+    WhileMatchLoop {
+        var: String,
+        body: Box<AstNode>,
+    },
+    
     // Advanced J features
     AutoFunction {
         name: String,
@@ -537,12 +583,19 @@ pub enum BinaryOp {
     Equal, NotEqual, Less, Greater, LessEqual, GreaterEqual,
     ConstantTimeEq,  // ~== (secure constant-time equality)
     And, Or,
+    // Bitwise operators
+    BitwiseAnd,      // &
+    BitwiseOr,       // |
+    BitwiseXor,      // ^
+    LeftShift,       // <<
+    RightShift,      // >>
     Assign,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Minus, Not,
+    BitwiseNot,      // ~
 }
 
 pub struct Parser {
@@ -645,6 +698,32 @@ impl Parser {
         if self.match_token(&TokenType::Secure) {
             return self.secure_block();
         }
+        
+        // Advanced algorithm loops
+        if self.match_token(&TokenType::Sweep) {
+            return self.parse_sweep_loop();
+        }
+        if self.match_token(&TokenType::Shrink) {
+            return self.parse_shrink_loop();
+        }
+        if self.match_token(&TokenType::Meet) {
+            return self.parse_meet_loop();
+        }
+        if self.match_token(&TokenType::Binary) {
+            return self.parse_binary_search_loop();
+        }
+        if self.match_token(&TokenType::Dp) {
+            return self.parse_dp_loop();
+        }
+        if self.match_token(&TokenType::WhileNonzero) {
+            return self.parse_while_nonzero();
+        }
+        if self.match_token(&TokenType::WhileChange) {
+            return self.parse_while_change();
+        }
+        if self.match_token(&TokenType::WhileMatch) {
+            return self.parse_while_match();
+        }
         if self.match_token(&TokenType::Rollback) {
             return self.rollback_block();
         }
@@ -678,7 +757,7 @@ impl Parser {
         if self.match_token(&TokenType::Flood) {
             return self.flood_loop();
         }
-        if self.match_token(&TokenType::Window) {
+        if self.match_token(&TokenType::WindowType) {
             return self.window_loop();
         }
         if self.match_token(&TokenType::Solver) {
@@ -952,6 +1031,11 @@ impl Parser {
             TokenType::Graph => "graph".to_string(),
             TokenType::Tree => "tree".to_string(),
             TokenType::Grid => "grid".to_string(),
+            TokenType::Span => "span".to_string(),
+            TokenType::MutSpan => "mut_span".to_string(),
+            TokenType::Chunk => "chunk".to_string(),
+            TokenType::Sparse => "sparse".to_string(),
+            TokenType::Ring => "ring".to_string(),
             TokenType::CharType => "char".to_string(),
             TokenType::EmojiType => "emoji".to_string(),
             TokenType::Ascii => "ascii".to_string(),
@@ -970,7 +1054,7 @@ impl Parser {
         
         let name = match &self.advance().token_type {
             TokenType::Identifier(name) => name.clone(),
-            _ => return Err("Expected variable name".to_string()),
+            _ => return Err(self.error_expected("variable name")),
         };
         
         self.consume(&TokenType::Arrow, "Expected '->' after variable name")?;
@@ -1564,10 +1648,58 @@ impl Parser {
     }
     
     fn and(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.equality()?;
+        let mut expr = self.bitwise_or()?;
         
         while self.match_token(&TokenType::And) {
             let operator = BinaryOp::And;
+            let right = self.bitwise_or()?;
+            expr = AstNode::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        
+        Ok(expr)
+    }
+    
+    fn bitwise_or(&mut self) -> Result<AstNode, String> {
+        let mut expr = self.bitwise_xor()?;
+        
+        while self.match_token(&TokenType::Pipe) {
+            let operator = BinaryOp::BitwiseOr;
+            let right = self.bitwise_xor()?;
+            expr = AstNode::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        
+        Ok(expr)
+    }
+    
+    fn bitwise_xor(&mut self) -> Result<AstNode, String> {
+        let mut expr = self.bitwise_and()?;
+        
+        while self.match_token(&TokenType::Caret) {
+            let operator = BinaryOp::BitwiseXor;
+            let right = self.bitwise_and()?;
+            expr = AstNode::Binary {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+        
+        Ok(expr)
+    }
+    
+    fn bitwise_and(&mut self) -> Result<AstNode, String> {
+        let mut expr = self.equality()?;
+        
+        while self.match_token(&TokenType::Ampersand) {
+            let operator = BinaryOp::BitwiseAnd;
             let right = self.equality()?;
             expr = AstNode::Binary {
                 left: Box::new(expr),
@@ -1595,9 +1727,24 @@ impl Parser {
     }
     
     fn comparison(&mut self) -> Result<AstNode, String> {
-        let mut expr = self.range_expr()?;
+        let mut expr = self.bitwise_shift()?;
         
         while let Some(op) = self.match_comparison_op() {
+            let right = self.bitwise_shift()?;
+            expr = AstNode::Binary {
+                left: Box::new(expr),
+                operator: op,
+                right: Box::new(right),
+            };
+        }
+        
+        Ok(expr)
+    }
+    
+    fn bitwise_shift(&mut self) -> Result<AstNode, String> {
+        let mut expr = self.range_expr()?;
+        
+        while let Some(op) = self.match_shift_op() {
             let right = self.range_expr()?;
             expr = AstNode::Binary {
                 left: Box::new(expr),
@@ -2844,6 +2991,215 @@ impl Parser {
         true
     }
     
+    // Advanced algorithm loop parsing functions
+    fn parse_sweep_loop(&mut self) -> Result<AstNode, String> {
+        // sweep (left, right) in nums { ... }
+        self.consume(&TokenType::LeftParen, "Expected '(' after 'sweep'")?;
+        
+        let left_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected left variable name in sweep loop".to_string()),
+        };
+        
+        self.consume(&TokenType::Comma, "Expected ',' between sweep variables")?;
+        
+        let right_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected right variable name in sweep loop".to_string()),
+        };
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after sweep variables")?;
+        self.consume(&TokenType::In, "Expected 'in' after sweep variables")?;
+        
+        let iterable = self.expression()?;
+        let body = self.block()?;
+        
+        Ok(AstNode::SweepLoop {
+            left_var,
+            right_var,
+            iterable: Box::new(iterable),
+            body: Box::new(body),
+        })
+    }
+    
+    fn parse_shrink_loop(&mut self) -> Result<AstNode, String> {
+        // shrink (left, right) in nums { ... }
+        self.consume(&TokenType::LeftParen, "Expected '(' after 'shrink'")?;
+        
+        let left_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected left variable name in shrink loop".to_string()),
+        };
+        
+        self.consume(&TokenType::Comma, "Expected ',' between shrink variables")?;
+        
+        let right_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected right variable name in shrink loop".to_string()),
+        };
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after shrink variables")?;
+        self.consume(&TokenType::In, "Expected 'in' after shrink variables")?;
+        
+        let iterable = self.expression()?;
+        let body = self.block()?;
+        
+        Ok(AstNode::ShrinkLoop {
+            left_var,
+            right_var,
+            iterable: Box::new(iterable),
+            body: Box::new(body),
+        })
+    }
+    
+    fn parse_meet_loop(&mut self) -> Result<AstNode, String> {
+        // meet (left, right) in nums { ... }
+        self.consume(&TokenType::LeftParen, "Expected '(' after 'meet'")?;
+        
+        let left_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected left variable name in meet loop".to_string()),
+        };
+        
+        self.consume(&TokenType::Comma, "Expected ',' between meet variables")?;
+        
+        let right_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected right variable name in meet loop".to_string()),
+        };
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after meet variables")?;
+        self.consume(&TokenType::In, "Expected 'in' after meet variables")?;
+        
+        let iterable = self.expression()?;
+        let body = self.block()?;
+        
+        Ok(AstNode::MeetLoop {
+            left_var,
+            right_var,
+            iterable: Box::new(iterable),
+            body: Box::new(body),
+        })
+    }
+    
+    fn parse_binary_search_loop(&mut self) -> Result<AstNode, String> {
+        // binary (lo, hi) in range { ... } else { ... }
+        self.consume(&TokenType::LeftParen, "Expected '(' after 'binary'")?;
+        
+        let lo_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected lo variable name in binary loop".to_string()),
+        };
+        
+        self.consume(&TokenType::Comma, "Expected ',' between binary variables")?;
+        
+        let hi_var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected hi variable name in binary loop".to_string()),
+        };
+        
+        self.consume(&TokenType::RightParen, "Expected ')' after binary variables")?;
+        self.consume(&TokenType::In, "Expected 'in' after binary variables")?;
+        
+        let range = self.expression()?;
+        let body = self.block()?;
+        
+        let else_block = if self.match_token(&TokenType::Else) {
+            Some(Box::new(self.block()?))
+        } else {
+            None
+        };
+        
+        Ok(AstNode::BinarySearchLoop {
+            lo_var,
+            hi_var,
+            range: Box::new(range),
+            body: Box::new(body),
+            else_block,
+        })
+    }
+    
+    fn parse_dp_loop(&mut self) -> Result<AstNode, String> {
+        // dp table[n][m] = 0 { ... }
+        let table_name = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected table name in dp loop".to_string()),
+        };
+        
+        // Parse dimensions: [n][m]
+        let mut dimensions = Vec::new();
+        while self.match_token(&TokenType::LeftBracket) {
+            let dim = self.expression()?;
+            dimensions.push(dim);
+            self.consume(&TokenType::RightBracket, "Expected ']' after dimension")?;
+        }
+        
+        if dimensions.is_empty() {
+            return Err("DP loop requires at least one dimension".to_string());
+        }
+        
+        self.consume(&TokenType::Assign, "Expected '=' after dp dimensions")?;
+        
+        let init_value = self.expression()?;
+        let body = self.block()?;
+        
+        Ok(AstNode::DpLoop {
+            table_name,
+            dimensions,
+            init_value: Box::new(init_value),
+            body: Box::new(body),
+        })
+    }
+    
+    fn parse_while_nonzero(&mut self) -> Result<AstNode, String> {
+        // while_nonzero var { ... }
+        let var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected variable name in while_nonzero".to_string()),
+        };
+        
+        let body = self.block()?;
+        
+        Ok(AstNode::WhileNonzero {
+            var,
+            body: Box::new(body),
+        })
+    }
+    
+    fn parse_while_change(&mut self) -> Result<AstNode, String> {
+        // while_change var = init { ... }
+        let var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected variable name in while_change".to_string()),
+        };
+        
+        self.consume(&TokenType::Assign, "Expected '=' after variable in while_change")?;
+        
+        let init = self.expression()?;
+        let body = self.block()?;
+        
+        Ok(AstNode::WhileChange {
+            var,
+            init: Box::new(init),
+            body: Box::new(body),
+        })
+    }
+    
+    fn parse_while_match(&mut self) -> Result<AstNode, String> {
+        // while_match var { ... }
+        let var = match &self.advance().token_type {
+            TokenType::Identifier(name) => name.clone(),
+            _ => return Err("Expected variable name in while_match".to_string()),
+        };
+        
+        let body = self.block()?;
+        
+        Ok(AstNode::WhileMatchLoop {
+            var,
+            body: Box::new(body),
+        })
+    }
+    
     fn advance(&mut self) -> &Token {
         if !self.is_at_end() {
             self.current += 1;
@@ -2874,6 +3230,43 @@ impl Parser {
         }
     }
     
+    // Enhanced error helpers
+    fn error_expected(&self, expected: &str) -> String {
+        let current = self.peek();
+        let got = format!("{:?}", current.token_type);
+        JError::parser_error(
+            &format!("Expected {}", expected),
+            expected,
+            &got,
+            current.line,
+            current.column
+        ).to_string()
+    }
+    
+    fn error_unexpected(&self, context: &str) -> String {
+        let current = self.peek();
+        JError::new(
+            crate::error::ErrorKind::UnexpectedToken,
+            format!("Unexpected token in {}", context)
+        )
+        .with_location(current.line, current.column)
+        .with_tip(format!("Token {:?} is not valid here", current.token_type))
+        .with_context(context.to_string())
+        .to_string()
+    }
+    
+    fn error_invalid_syntax(&self, context: &str, suggestion: &str) -> String {
+        let current = self.peek();
+        JError::new(
+            crate::error::ErrorKind::InvalidSyntax,
+            format!("Invalid syntax in {}", context)
+        )
+        .with_location(current.line, current.column)
+        .with_tip(suggestion.to_string())
+        .with_context(context.to_string())
+        .to_string()
+    }
+    
     fn is_type_token(&self) -> bool {
         matches!(
             self.peek().token_type,
@@ -2881,6 +3274,7 @@ impl Parser {
             TokenType::List | TokenType::Dict | TokenType::Tuple | TokenType::Vec | TokenType::Mat |
             TokenType::Vec3 | TokenType::Vec4 | TokenType::Mat2 | TokenType::Mat3 | TokenType::Mat4 |
             TokenType::Set | TokenType::Counter | TokenType::Deque | TokenType::PriorityQ | TokenType::Graph | TokenType::Tree | TokenType::Grid |
+            TokenType::Span | TokenType::MutSpan | TokenType::Chunk | TokenType::Sparse | TokenType::Ring |
             TokenType::CharType | TokenType::EmojiType | TokenType::Ascii | TokenType::MoneyType |
             TokenType::HexType | TokenType::DateType | TokenType::TimeType | TokenType::DateTimeType |
             TokenType::Any | TokenType::Expr | TokenType::Exclamation |
@@ -2909,6 +3303,16 @@ impl Parser {
             Some(BinaryOp::Less)
         } else if self.match_token(&TokenType::LessEqual) {
             Some(BinaryOp::LessEqual)
+        } else {
+            None
+        }
+    }
+    
+    fn match_shift_op(&mut self) -> Option<BinaryOp> {
+        if self.match_token(&TokenType::LeftShift) {
+            Some(BinaryOp::LeftShift)
+        } else if self.match_token(&TokenType::RightShift) {
+            Some(BinaryOp::RightShift)
         } else {
             None
         }
@@ -2943,6 +3347,8 @@ impl Parser {
             Some(UnaryOp::Not)
         } else if self.match_token(&TokenType::Minus) {
             Some(UnaryOp::Minus)
+        } else if self.match_token(&TokenType::Tilde) {
+            Some(UnaryOp::BitwiseNot)
         } else {
             None
         }

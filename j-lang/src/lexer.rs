@@ -25,6 +25,10 @@ pub enum TokenType {
     Str, Int, FloatType, Bool, List, Dict, Tuple, Vec, Mat,
     Vec3, Vec4, Mat2, Mat3, Mat4, Set, Counter,
     Deque, PriorityQ, Graph, Tree, Grid,
+    // New OP collection types
+    Queue, Ring, Sorted, Bag, WindowType, ViewType, Prio, Diff,
+    // Advanced array types
+    Span, MutSpan, Chunk, Sparse, Stride, Flat, MutFlat, IntervalType, Union,
     CharType, EmojiType, Ascii, MoneyType, HexType, DateType, TimeType, DateTimeType,
     Any, Expr, EnumType,
     
@@ -32,6 +36,9 @@ pub enum TokenType {
     Fn, Class, EnumKeyword, Trait, Static, Pub, Priv,
     If, Else, Match, Case, While, Loop, For, In, Break, Continue,
     Defer, Converge,
+    // Advanced loop keywords
+    Sweep, Shrink, Meet, Binary, Dp,
+    WhileNonzero, WhileChange, WhileMatch,
     Return, Yield, Async, Await, Task, Gen,
     Use, Mod, Import, Module, Let, Mut, Ref,
     Try, Catch, Finally, Panic,
@@ -44,8 +51,8 @@ pub enum TokenType {
     Component, Contract, Workspace, Env,
     Packet, Gui, Sql, Embed,
     Triple, Shield, Deterministic, Audit, Layout, Fixed, Sequence,
-    Pure, Effect, Invariant, View,
-    Constraint, Solver, Window, Flood,
+    Pure, Effect, Invariant,
+    Constraint, Solver, Flood,
     Ignite, Interval,
     ConstantTimeEq,  // ~== operator
     Tilde,           // ~ (single)
@@ -74,6 +81,13 @@ pub enum TokenType {
     And,            // and
     Or,             // or
     Not,            // not
+    
+    // Bitwise operators
+    Ampersand,      // &
+    BitwiseOr,      // | (already exists as Pipe, but we'll use for bitwise)
+    Caret,          // ^
+    LeftShift,      // <<
+    RightShift,     // >>
     
     // Punctuation
     LeftParen,      // (
@@ -305,7 +319,9 @@ impl Lexer {
             }
             
             '<' => {
-                if self.match_char('-') {
+                if self.match_char('<') {
+                    Ok(Some(TokenType::LeftShift))
+                } else if self.match_char('-') {
                     Ok(Some(TokenType::Bind))
                 } else if self.match_char('=') {
                     Ok(Some(TokenType::LessEqual))
@@ -315,7 +331,9 @@ impl Lexer {
             }
             
             '>' => {
-                if self.match_char('=') {
+                if self.match_char('>') {
+                    Ok(Some(TokenType::RightShift))
+                } else if self.match_char('=') {
                     Ok(Some(TokenType::GreaterEqual))
                 } else {
                     Ok(Some(TokenType::Greater))
@@ -329,6 +347,10 @@ impl Lexer {
                     Ok(Some(TokenType::Tilde))
                 }
             }
+            
+            '&' => Ok(Some(TokenType::Ampersand)),
+            
+            '^' => Ok(Some(TokenType::Caret)),
             
             '|' => {
                 if self.match_char('>') {
@@ -397,7 +419,14 @@ impl Lexer {
                 Ok(Some(TokenType::Emoji(emoji)))
             }
             
-            _ => Err(format!("Unexpected character '{}' at line {}, column {}", c, self.line, self.column)),
+            _ => Err(JError::new(
+                crate::error::ErrorKind::UnexpectedCharacter,
+                format!("Unexpected character '{}'", c)
+            )
+            .with_location(self.line, self.column)
+            .with_tip(format!("Character '{}' is not valid in this context", c))
+            .with_solution("Remove this character or check if you meant to use a different symbol".to_string())
+            .to_string()),
         }
     }
     
@@ -716,7 +745,25 @@ impl Lexer {
             "graph" => TokenType::Graph,
             "tree" => TokenType::Tree,
             "grid" => TokenType::Grid,
-            "interval" => TokenType::Interval,
+            // New OP collection types
+            "queue" => TokenType::Queue,
+            "ring" => TokenType::Ring,
+            "sorted" => TokenType::Sorted,
+            "bag" => TokenType::Bag,
+            "window" => TokenType::WindowType,
+            "view" => TokenType::ViewType,
+            "prio" => TokenType::Prio,
+            "diff" => TokenType::Diff,
+            // Advanced array types
+            "span" => TokenType::Span,
+            "mut_span" => TokenType::MutSpan,
+            "chunk" => TokenType::Chunk,
+            "sparse" => TokenType::Sparse,
+            "stride" => TokenType::Stride,
+            "flat" => TokenType::Flat,
+            "mut_flat" => TokenType::MutFlat,
+            "interval" => TokenType::IntervalType,
+            "union" => TokenType::Union,
             "char" => TokenType::CharType,
             "emoji" => TokenType::EmojiType,
             "ascii" => TokenType::Ascii,
@@ -744,6 +791,15 @@ impl Lexer {
             "while" => TokenType::While,
             "loop" => TokenType::Loop,
             "for" => TokenType::For,
+            // Advanced loop keywords
+            "sweep" => TokenType::Sweep,
+            "shrink" => TokenType::Shrink,
+            "meet" => TokenType::Meet,
+            "binary" => TokenType::Binary,
+            "dp" => TokenType::Dp,
+            "while_nonzero" => TokenType::WhileNonzero,
+            "while_change" => TokenType::WhileChange,
+            "while_match" => TokenType::WhileMatch,
             "in" => TokenType::In,
             "break" => TokenType::Break,
             "continue" => TokenType::Continue,
@@ -782,10 +838,9 @@ impl Lexer {
             "pure" => TokenType::Pure,
             "effect" => TokenType::Effect,
             "invariant" => TokenType::Invariant,
-            "view" => TokenType::View,
             "constraint" => TokenType::Constraint,
             "solver" => TokenType::Solver,
-            "window" => TokenType::Window,
+            "window" => TokenType::WindowType,
             "flood" => TokenType::Flood,
             "ignite" => TokenType::Ignite,
             "by" => TokenType::By,
