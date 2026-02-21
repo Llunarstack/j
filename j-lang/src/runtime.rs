@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
 // Runtime system for J language
@@ -52,8 +52,14 @@ pub struct Runtime {
     global_vars: Arc<Mutex<HashMap<String, RuntimeValue>>>,
 }
 
-#[allow(dead_code)]
 impl Runtime {
+    #[allow(dead_code)]
+    fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+        match mutex.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
     pub fn new() -> Self {
         Self {
             tasks: HashMap::new(),
@@ -64,6 +70,7 @@ impl Runtime {
         }
     }
 
+    #[allow(dead_code)]
     pub fn spawn_task<F>(&mut self, f: F) -> TaskHandle
     where
         F: FnOnce() -> Result<RuntimeValue, String> + Send + 'static,
@@ -95,6 +102,7 @@ impl Runtime {
         handle
     }
 
+    #[allow(dead_code)]
     pub fn create_channel(&mut self) -> ChannelHandle {
         let channel_id = self.next_channel_id;
         self.next_channel_id += 1;
@@ -111,24 +119,27 @@ impl Runtime {
         handle
     }
 
+    #[allow(dead_code)]
     pub fn send_to_channel(
         &self,
         channel: &ChannelHandle,
         value: RuntimeValue,
     ) -> Result<(), String> {
-        let sender = channel.sender.lock().unwrap();
+        let sender = Self::lock_or_recover(&channel.sender);
         sender
             .send(value)
             .map_err(|e| format!("Channel send failed: {}", e))
     }
 
+    #[allow(dead_code)]
     pub fn receive_from_channel(&self, channel: &ChannelHandle) -> Result<RuntimeValue, String> {
-        let receiver = channel.receiver.lock().unwrap();
+        let receiver = Self::lock_or_recover(&channel.receiver);
         receiver
             .recv()
             .map_err(|e| format!("Channel receive failed: {}", e))
     }
 
+    #[allow(dead_code)]
     pub fn parallel_map<F>(&self, list: Vec<RuntimeValue>, f: F) -> Vec<RuntimeValue>
     where
         F: Fn(RuntimeValue) -> RuntimeValue + Send + Sync + 'static,
@@ -144,10 +155,14 @@ impl Runtime {
 
         handles
             .into_iter()
-            .map(|h| h.join().unwrap_or(RuntimeValue::None))
+            .map(|h| match h.join() {
+                Ok(value) => value,
+                Err(_) => RuntimeValue::None,
+            })
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn parallel_filter<F>(&self, list: Vec<RuntimeValue>, predicate: F) -> Vec<RuntimeValue>
     where
         F: Fn(&RuntimeValue) -> bool + Send + Sync + 'static,
@@ -169,21 +184,27 @@ impl Runtime {
 
         handles
             .into_iter()
-            .filter_map(|h| h.join().unwrap_or(None))
+            .filter_map(|h| match h.join() {
+                Ok(value) => value,
+                Err(_) => None,
+            })
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn get_global_var(&self, name: &str) -> Option<RuntimeValue> {
-        let globals = self.global_vars.lock().unwrap();
+        let globals = Self::lock_or_recover(&self.global_vars);
         globals.get(name).cloned()
     }
 
+    #[allow(dead_code)]
     pub fn set_global_var(&self, name: String, value: RuntimeValue) {
-        let mut globals = self.global_vars.lock().unwrap();
+        let mut globals = Self::lock_or_recover(&self.global_vars);
         globals.insert(name, value);
     }
 
     // Built-in functions
+    #[allow(dead_code)]
     pub fn builtin_out(&self, args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         if args.len() != 1 {
             return Err("out() expects exactly 1 argument".to_string());
@@ -216,6 +237,7 @@ impl Runtime {
         Ok(RuntimeValue::None)
     }
 
+    #[allow(dead_code)]
     pub fn builtin_len(&self, args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         if args.len() != 1 {
             return Err("len() expects exactly 1 argument".to_string());
@@ -228,6 +250,7 @@ impl Runtime {
         }
     }
 
+    #[allow(dead_code)]
     pub fn builtin_range(&self, args: Vec<RuntimeValue>) -> Result<RuntimeValue, String> {
         match args.len() {
             1 => {
@@ -279,6 +302,7 @@ impl Runtime {
         }
     }
 
+    #[allow(dead_code)]
     pub fn cleanup(&mut self) {
         // Clean up resources
         self.tasks.clear();

@@ -1,41 +1,24 @@
-# Rust
-target/
-Cargo.lock
+# Rust build artifacts
+**/target/
 **/*.rs.bk
-*.pdb
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Node
+**/node_modules/
+**/.npm/
+**/.yarn/
+**/dist/
+**/.parcel-cache/
 
-# OS
+# VS Code local settings
+**/.vscode/
+
+# OS/filesystem
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# Build artifacts
-*.exe
-*.dll
-*.so
-*.dylib
-*.a
-*.lib
 
 # Logs
-*.log
+**/*.log
 
-# Temporary files
-*.tmp
-*.temp
-.cache/
-
-# Package managers
-node_modules/
-package-lock.json
-
-# J language specific
-*.j.out
-.j_cache/
+# Generated installers/output
+/install/output/
+/j-lang/dist/

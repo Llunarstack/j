@@ -19,7 +19,10 @@ impl Repl {
     pub fn run(&mut self) {
         loop {
             print!("j> ");
-            io::stdout().flush().unwrap();
+            if let Err(e) = io::stdout().flush() {
+                eprintln!("❌ Failed to flush output: {}", e);
+                break;
+            }
 
             let mut input = String::new();
             match io::stdin().read_line(&mut input) {

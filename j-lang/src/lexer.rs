@@ -76,6 +76,13 @@ pub enum TokenType {
     // Keywords
     Fn,
     Class,
+    Secure,
+    Singleton,
+    Actor,
+    Observable,
+    Threadsafe,
+    Data,
+    Resource,
     EnumKeyword,
     Trait,
     Static,
@@ -139,7 +146,8 @@ pub enum TokenType {
     Pulse,
     Untrusted,
     Secret,
-    Secure,
+    Enc,
+    Enclave,
     Canary,
     Component,
     Contract,
@@ -519,15 +527,15 @@ impl Lexer {
             // Currency symbols
             '€' | '¥' | '£' | '₿' | '₽' | '₺' | '₹' | '₴' => self.scan_money(c),
 
-            // Identifiers, keywords, and underscore
-            c if self.is_alpha(c) => self.scan_identifier_or_keyword(),
-            '_' => Ok(Some(TokenType::Underscore)),
-
-            // Execute command: j;
+            // Execute command: j; (must come before identifier check)
             'j' if self.peek() == ';' => {
                 self.advance(); // consume ';'
                 Ok(Some(TokenType::Execute))
             }
+
+            // Identifiers, keywords, and underscore
+            c if self.is_alpha(c) => self.scan_identifier_or_keyword(),
+            '_' => Ok(Some(TokenType::Underscore)),
 
             // Emoji (Unicode) - only actual emoji, not all multi-byte chars
             c if is_emoji(c) => {
@@ -906,6 +914,13 @@ impl Lexer {
             "enum" => TokenType::EnumKeyword,
             "static" => TokenType::Static,
             "class" => TokenType::Class,
+            "secure" => TokenType::Secure,
+            "singleton" => TokenType::Singleton,
+            "actor" => TokenType::Actor,
+            "observable" => TokenType::Observable,
+            "threadsafe" => TokenType::Threadsafe,
+            "data" => TokenType::Data,
+            "resource" => TokenType::Resource,
             "trait" => TokenType::Trait,
             "pub" => TokenType::Pub,
             "priv" => TokenType::Priv,
@@ -944,7 +959,8 @@ impl Lexer {
             "pulse" => TokenType::Pulse,
             "untrusted" => TokenType::Untrusted,
             "secret" => TokenType::Secret,
-            "secure" => TokenType::Secure,
+            "enc" => TokenType::Enc,
+            "enclave" => TokenType::Enclave,
             "canary" => TokenType::Canary,
             "component" => TokenType::Component,
             "contract" => TokenType::Contract,

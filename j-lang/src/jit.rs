@@ -120,31 +120,24 @@ impl JitCompiler {
 
         loop {
             match rx.recv() {
-                Ok(event) =>
-                {
-                    #[cfg(feature = "jit")]
-                    match event {
-                        notify::DebouncedEvent::Write(path)
-                        | notify::DebouncedEvent::Create(path) => {
-                            if path.extension().and_then(|s: &std::ffi::OsStr| s.to_str())
-                                == Some("j")
-                            {
-                                println!("\n🔥 File changed: {}", path.display());
+                Ok(event) => match event {
+                    notify::DebouncedEvent::Write(path) | notify::DebouncedEvent::Create(path) => {
+                        if path.extension().and_then(|s| s.to_str()) == Some("j") {
+                            println!("\n🔥 File changed: {}", path.display());
 
-                                if let Err(e) = self.execute_file(&path) {
-                                    println!("❌ Hot reload failed: {}", e);
-                                } else {
-                                    println!("🚀 Hot reload successful");
-                                }
-
-                                print!("\n👀 Watching for changes...");
-                                use std::io::{self, Write};
-                                io::stdout().flush().unwrap();
+                            if let Err(e) = self.execute_file(&path) {
+                                println!("❌ Hot reload failed: {}", e);
+                            } else {
+                                println!("🚀 Hot reload successful");
                             }
+
+                            print!("\n👀 Watching for changes...");
+                            use std::io::{self, Write};
+                            let _ = io::stdout().flush();
                         }
-                        _ => {}
                     }
-                }
+                    _ => {}
+                },
                 Err(e) => {
                     println!("❌ Watch error: {}", e);
                     break;

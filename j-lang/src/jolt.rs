@@ -51,10 +51,11 @@ pub struct JoltPackage {
     pub manifest: JoltManifest,
 }
 
-#[allow(dead_code)]
 pub struct JoltManager {
+    #[allow(dead_code)]
     pub registry_url: String,
     pub cache_dir: PathBuf,
+    #[allow(dead_code)]
     pub global_dir: PathBuf,
 }
 

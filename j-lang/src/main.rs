@@ -2,6 +2,7 @@ use clap::{Arg, Command};
 use std::path::PathBuf;
 
 mod compiler;
+mod crypto;
 mod error;
 mod interpreter;
 mod jit;
@@ -141,7 +142,13 @@ fn main() {
             repl.run();
         }
         Some(("run", sub_matches)) => {
-            let file = sub_matches.get_one::<String>("file").unwrap();
+            let file = match sub_matches.get_one::<String>("file") {
+                Some(f) => f,
+                None => {
+                    eprintln!("❌ No file specified");
+                    std::process::exit(1);
+                }
+            };
 
             println!("🔥 Running {} with interpreter", file);
 
@@ -161,12 +168,17 @@ fn main() {
                 });
 
             match result {
-                Ok(handle) => {
-                    if let Err(e) = handle.join().unwrap() {
+                Ok(handle) => match handle.join() {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
                         eprintln!("❌ Runtime error: {}", e);
                         std::process::exit(1);
                     }
-                }
+                    Err(_) => {
+                        eprintln!("❌ Interpreter thread panicked");
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
                     eprintln!("❌ Failed to spawn interpreter thread: {}", e);
                     std::process::exit(1);
@@ -174,7 +186,13 @@ fn main() {
             }
         }
         Some(("build", sub_matches)) => {
-            let file = sub_matches.get_one::<String>("file").unwrap();
+            let file = match sub_matches.get_one::<String>("file") {
+                Some(f) => f,
+                None => {
+                    eprintln!("❌ No file specified");
+                    std::process::exit(1);
+                }
+            };
             let release = sub_matches.get_flag("release");
             let output = sub_matches.get_one::<String>("output");
 
@@ -211,7 +229,13 @@ fn main() {
             }
         }
         Some(("check", sub_matches)) => {
-            let file = sub_matches.get_one::<String>("file").unwrap();
+            let file = match sub_matches.get_one::<String>("file") {
+                Some(f) => f,
+                None => {
+                    eprintln!("❌ No file specified");
+                    std::process::exit(1);
+                }
+            };
             println!("🔍 Checking {}", file);
 
             let source = match std::fs::read_to_string(file) {
@@ -265,7 +289,13 @@ fn main() {
                     }
                 }
                 Some(("add", add_matches)) => {
-                    let package = add_matches.get_one::<String>("package").unwrap();
+                    let package = match add_matches.get_one::<String>("package") {
+                        Some(p) => p,
+                        None => {
+                            eprintln!("❌ No package specified");
+                            std::process::exit(1);
+                        }
+                    };
                     let version = add_matches.get_one::<String>("version").map(String::as_str);
 
                     if let Err(e) = jolt.add_dependency(&current_dir, package, version) {
@@ -274,7 +304,13 @@ fn main() {
                     }
                 }
                 Some(("remove", remove_matches)) => {
-                    let package = remove_matches.get_one::<String>("package").unwrap();
+                    let package = match remove_matches.get_one::<String>("package") {
+                        Some(p) => p,
+                        None => {
+                            eprintln!("❌ No package specified");
+                            std::process::exit(1);
+                        }
+                    };
 
                     if let Err(e) = jolt.remove_dependency(&current_dir, package) {
                         eprintln!("❌ Failed to remove dependency: {}", e);
@@ -293,7 +329,13 @@ fn main() {
                     }
                 }
                 Some(("run", run_matches)) => {
-                    let script = run_matches.get_one::<String>("script").unwrap();
+                    let script = match run_matches.get_one::<String>("script") {
+                        Some(s) => s,
+                        None => {
+                            eprintln!("❌ No script specified");
+                            std::process::exit(1);
+                        }
+                    };
 
                     if let Err(e) = jolt.run_script(&current_dir, script) {
                         eprintln!("❌ Failed to run script: {}", e);
@@ -307,7 +349,13 @@ fn main() {
                     }
                 }
                 Some(("search", search_matches)) => {
-                    let query = search_matches.get_one::<String>("query").unwrap();
+                    let query = match search_matches.get_one::<String>("query") {
+                        Some(q) => q,
+                        None => {
+                            eprintln!("❌ No search query specified");
+                            std::process::exit(1);
+                        }
+                    };
 
                     if let Err(e) = jolt.search(query) {
                         eprintln!("❌ Search failed: {}", e);
@@ -315,7 +363,13 @@ fn main() {
                     }
                 }
                 Some(("info", info_matches)) => {
-                    let package = info_matches.get_one::<String>("package").unwrap();
+                    let package = match info_matches.get_one::<String>("package") {
+                        Some(p) => p,
+                        None => {
+                            eprintln!("❌ No package specified");
+                            std::process::exit(1);
+                        }
+                    };
 
                     if let Err(e) = jolt.info(package) {
                         eprintln!("❌ Failed to get package info: {}", e);

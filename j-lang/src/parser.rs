@@ -1,7 +1,6 @@
 use crate::error::JError;
 use crate::lexer::{Token, TokenType};
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassField {
     pub name: String,
@@ -183,6 +182,7 @@ pub enum AstNode {
     },
     ClassDeclaration {
         name: String,
+        class_type: Option<String>, // secure, singleton, actor, observable, threadsafe, data, resource
         parent: Option<String>,
         traits: Vec<String>,
         fields: Vec<ClassField>,
@@ -680,9 +680,46 @@ impl Parser {
             return self.enum_declaration();
         }
 
-        // Class declaration: class | name { ... }
+        // Class declaration with optional modifiers
+        // secure class | name, singleton class | name, etc.
+        if self.check(&TokenType::Secure)
+            || self.check(&TokenType::Singleton)
+            || self.check(&TokenType::Actor)
+            || self.check(&TokenType::Observable)
+            || self.check(&TokenType::Threadsafe)
+            || self.check(&TokenType::Data)
+            || self.check(&TokenType::Resource)
+        {
+            let class_type = if self.match_token(&TokenType::Secure) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'secure'")?;
+                Some("secure".to_string())
+            } else if self.match_token(&TokenType::Singleton) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'singleton'")?;
+                Some("singleton".to_string())
+            } else if self.match_token(&TokenType::Actor) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'actor'")?;
+                Some("actor".to_string())
+            } else if self.match_token(&TokenType::Observable) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'observable'")?;
+                Some("observable".to_string())
+            } else if self.match_token(&TokenType::Threadsafe) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'threadsafe'")?;
+                Some("threadsafe".to_string())
+            } else if self.match_token(&TokenType::Data) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'data'")?;
+                Some("data".to_string())
+            } else if self.match_token(&TokenType::Resource) {
+                self.consume(&TokenType::Class, "Expected 'class' after 'resource'")?;
+                Some("resource".to_string())
+            } else {
+                None
+            };
+            return self.class_declaration(class_type);
+        }
+
+        // Regular class declaration: class | name { ... }
         if self.match_token(&TokenType::Class) {
-            return self.class_declaration();
+            return self.class_declaration(None);
         }
 
         // Trait declaration: trait | name { methods }
@@ -1024,23 +1061,38 @@ impl Parser {
         self.consume(&TokenType::Arrow, "Expected '->' after 'j;'")?;
 
         let token = self.advance().clone();
-        let filename = match &token.token_type {
-            TokenType::Identifier(name) => {
-                // Handle filename with extension
-                if self.match_token(&TokenType::Dot) {
-                    let ext_token = self.advance().clone();
-                    let extension = match &ext_token.token_type {
-                        TokenType::Identifier(ext) => ext.clone(),
-                        _ => return Err("Expected file extension after '.'".to_string()),
-                    };
-                    format!("{}.{}", name, extension)
-                } else {
-                    name.clone()
-                }
-            }
+        let mut filename = match &token.token_type {
+            TokenType::Identifier(name) => name.clone(),
             TokenType::String(filename) => filename.clone(),
             _ => return Err("Expected filename after 'j; ->'".to_string()),
         };
+
+        // Handle path separators and extensions
+        loop {
+            if self.match_token(&TokenType::Divide) {
+                // Handle forward slash in path (src/file.j)
+                let next_token = self.advance().clone();
+                match &next_token.token_type {
+                    TokenType::Identifier(name) => {
+                        filename.push('/');
+                        filename.push_str(name);
+                    }
+                    _ => return Err("Expected identifier after '/' in path".to_string()),
+                }
+            } else if self.match_token(&TokenType::Dot) {
+                // Handle file extension (.j)
+                let ext_token = self.advance().clone();
+                match &ext_token.token_type {
+                    TokenType::Identifier(ext) => {
+                        filename.push('.');
+                        filename.push_str(ext);
+                    }
+                    _ => return Err("Expected file extension after '.'".to_string()),
+                }
+            } else {
+                break;
+            }
+        }
 
         Ok(AstNode::ExecuteFile { filename })
     }
@@ -1062,6 +1114,8 @@ impl Parser {
             type_modifier = Some("secret".to_string());
         } else if self.match_token(&TokenType::Canary) {
             type_modifier = Some("canary".to_string());
+        } else if self.match_token(&TokenType::Enc) {
+            type_modifier = Some("enc".to_string());
         }
 
         let var_type = match &self.advance().token_type {
@@ -1102,6 +1156,8 @@ impl Parser {
             TokenType::Any => "any".to_string(),
             TokenType::Expr => "expr".to_string(),
             TokenType::Identifier(name) => name.clone(),
+            TokenType::Enc => "enc".to_string(),
+            TokenType::Secret => "secret".to_string(),
             _ => return Err("Expected type name".to_string()),
         };
 
@@ -1599,16 +1655,16 @@ impl Parser {
                 match &mut enhanced {
                     AstNode::ForReverse {
                         body: ref mut b, ..
-                    } => *b = Box::new(body),
+                    } => **b = body,
                     AstNode::ForZip {
                         body: ref mut b, ..
-                    } => *b = Box::new(body),
+                    } => **b = body,
                     AstNode::ForParallel {
                         body: ref mut b, ..
-                    } => *b = Box::new(body),
+                    } => **b = body,
                     AstNode::ForChunked {
                         body: ref mut b, ..
-                    } => *b = Box::new(body),
+                    } => **b = body,
                     _ => {}
                 }
                 Ok(enhanced)
@@ -2297,7 +2353,7 @@ impl Parser {
                 self.consume(&TokenType::RightBracket, "Expected ']' after elements")?;
 
                 // Determine if this is a matrix (all elements are lists of same length)
-                let is_matrix = elements.len() > 0
+                let is_matrix = !elements.is_empty()
                     && elements.iter().all(|elem| matches!(elem, AstNode::List(_)));
 
                 if is_matrix {
@@ -2454,7 +2510,7 @@ impl Parser {
         })
     }
 
-    fn class_declaration(&mut self) -> Result<AstNode, String> {
+    fn class_declaration(&mut self, class_type: Option<String>) -> Result<AstNode, String> {
         self.consume(&TokenType::Pipe, "Expected '|' after 'class'")?;
 
         let name = match &self.advance().token_type {
@@ -2570,6 +2626,7 @@ impl Parser {
 
         Ok(AstNode::ClassDeclaration {
             name,
+            class_type,
             parent,
             traits,
             fields,
@@ -3733,7 +3790,7 @@ impl Parser {
                 let mut expr = String::new();
                 let mut brace_count = 1;
 
-                while let Some(next_ch) = chars.next() {
+                for next_ch in chars.by_ref() {
                     if next_ch == '{' {
                         brace_count += 1;
                     } else if next_ch == '}' {

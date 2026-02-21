@@ -2,7 +2,6 @@
 
 use std::fmt;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct JError {
     pub kind: ErrorKind,
@@ -217,9 +216,7 @@ impl JError {
             ));
         }
 
-        error = error.with_solution(format!(
-            "Check the function definition to see what arguments it expects"
-        ));
+        error = error.with_solution("Check the function definition to see what arguments it expects".to_string());
 
         error
     }
@@ -624,12 +621,8 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     let len2 = s2.len();
     let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
-    for i in 0..=len1 {
-        matrix[i][0] = i;
-    }
-    for j in 0..=len2 {
-        matrix[0][j] = j;
-    }
+    (0..=len1).for_each(|i| matrix[i][0] = i);
+    (0..=len2).for_each(|j| matrix[0][j] = j);
 
     for (i, c1) in s1.chars().enumerate() {
         for (j, c2) in s2.chars().enumerate() {
