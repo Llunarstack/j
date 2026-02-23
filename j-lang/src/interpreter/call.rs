@@ -1,4457 +1,9 @@
-use crate::error::JError;
-use crate::parser::{AstNode, BinaryOp, Pattern, UnaryOp};
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fmt;
+//! Call dispatch and builtins.
 
-// Control flow enum for proper unwinding (reserved for future use)
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub enum ControlFlow {
-    None,
-    Return(Box<Value>),
-    Break,
-    Continue,
-}
-
-// Define these types before Value enum since Value references them
-#[derive(Debug, Clone, PartialEq)]
-pub struct TraitMethod {
-    pub name: String,
-    pub params: Vec<(String, String)>,
-    pub return_type: Option<String>,
-    pub default_impl: Option<Box<AstNode>>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum FutureState {
-    Pending,
-    Running,
-    Completed,
-    Failed(String),
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum Value {
-    Integer(i64),
-    Float(f64),
-    String(String),
-    Boolean(bool),
-    Char(char),
-    List(Vec<Value>),
-    Dict(HashMap<String, Value>),
-    Set(HashSet<String>),          // For simplicity, using String keys
-    Counter(HashMap<String, i64>), // Frequency counter
-    Deque(Vec<Value>),             // Double-ended queue (legacy - use Queue instead)
-    PriorityQ(Vec<(i64, Value)>),  // Priority queue (legacy - use Prio instead)
-    Graph(HashMap<String, Vec<(String, f64)>>), // Graph: node -> [(neighbor, weight), ...]
-    // Security types
-    Encrypted {
-        ciphertext: Vec<u8>,
-        key_id: String,
-        nonce: Vec<u8>,
-    }, // Encrypted value (auto-decrypt on access)
-    Secret(String), // Redacted in logs/errors
-    // New OP collection types
-    Queue(std::collections::VecDeque<Value>), // Double-ended queue with O(1) push/pop both ends
-    Ring {
-        buffer: Vec<Value>,
-        capacity: usize,
-        head: usize,
-        size: usize,
-    }, // Circular buffer with fixed capacity
-    Sorted(Vec<Value>),                       // Auto-sorted list (kept sorted on insert)
-    Bag(HashMap<String, i64>),                // Multiset/bag with automatic frequency counting
-    Window {
-        source: Vec<Value>,
-        size: usize,
-        start: usize,
-    }, // Sliding window view (zero-copy)
-    View {
-        source: Box<Value>,
-        start: usize,
-        end: usize,
-        mutable: bool,
-    }, // Zero-copy slice view
-    Prio(Vec<(i64, Value)>),                  // Priority queue (min-heap) - improved version
-    Diff(Vec<Value>),                         // Difference list for cheap append
-    Tree {
-        value: Box<Value>,
-        children: Vec<Value>, // Children are also Tree values
-    },
-    // Advanced array types
-    Span {
-        source: Box<Value>,
-        start: usize,
-        end: usize,
-    },
-    MutSpan {
-        source: Box<Value>,
-        start: usize,
-        end: usize,
-    },
-    Chunk {
-        source: Box<Value>,
-        chunk_size: usize,
-        current_index: usize,
-    },
-    Sparse {
-        data: HashMap<usize, Value>,
-        default: Box<Value>,
-        size: usize,
-    },
-    Function {
-        name: String,
-        params: Vec<String>,
-        body: Box<AstNode>,
-    },
-    Infinity(bool), // true for +inf, false for -inf
-    Emoji(String),
-    Money(String, f64), // (currency_symbol, amount)
-    Hex(String),
-    Date(String),
-    Time(String),
-    DateTime(String),
-    Tuple(Vec<Value>),
-    Range(i64, i64, i64),       // start, end, step
-    Task(u64),                  // task ID
-    Channel(u64),               // channel ID
-    Vector(Vec<f64>),           // 1D vector
-    Matrix(Vec<Vec<f64>>),      // 2D matrix
-    Grid(Vec<Vec<Value>>),      // 2D grid with neighbor logic
-    GridNeighbors(Box<Value>),  // callable: grid.neighbors(i, j) -> list of adjacent cell values
-    GridNeighbors8(Box<Value>), // callable: grid.neighbors8(i, j) -> 8-directional neighbors
-    GridFindAll(Box<Value>),    // callable: grid.find_all(value) -> list of (row, col) positions
-    GridRow(Box<Value>),        // callable: grid.row(n) -> list of values in row n
-    GridCol(Box<Value>),        // callable: grid.col(n) -> list of values in column n
-    MatrixRow(Box<Value>),      // callable: matrix.row(n) -> list of values in row n
-    MatrixCol(Box<Value>),      // callable: matrix.col(n) -> list of values in column n
-    MatrixDiagonal(Box<Value>), // callable: matrix.diagonal() -> list of diagonal values
-    MatrixFlat(Box<Value>),     // callable: matrix.flat() -> flattened list
-    MatrixRowSums(Box<Value>),  // callable: matrix.row_sums() -> list of row sums
-    MatrixColSums(Box<Value>),  // callable: matrix.col_sums() -> list of column sums
-    MatrixRowMeans(Box<Value>), // callable: matrix.row_means() -> list of row means
-    MatrixColMeans(Box<Value>), // callable: matrix.col_means() -> list of column means
-    Enum {
-        name: String,
-        variants: HashMap<String, Value>,
-    },
-    EnumVariant {
-        enum_name: String,
-        variant_name: String,
-        value: Box<Value>,
-    },
-    Class {
-        name: String,
-        class_type: Option<String>, // secure, singleton, actor, observable, threadsafe, data, resource
-        parent: Option<String>,
-        fields: HashMap<String, Value>,
-        methods: HashMap<String, Value>,
-        static_fields: HashMap<String, Value>,
-        static_methods: HashMap<String, Value>,
-    },
-    Instance {
-        class_name: String,
-        fields: HashMap<String, Value>,
-    },
-    /// Constructor function for Class.new() - creates instances
-    Constructor(String), // class name
-    /// @once decorator: caches first call result
-    OnceCached {
-        id: usize,
-        inner: Box<Value>,
-    },
-    /// Mirror dispatch: call handle_missing(method_name, args) with this
-    MirrorDispatch {
-        method_name: String,
-        handle_missing: Box<Value>,
-    },
-    /// Module system - represents a loaded module with exports
-    Module {
-        name: String,
-        path: String,
-        exports: HashMap<String, Value>,
-    },
-    /// Trait system - represents a trait definition
-    Trait {
-        name: String,
-        methods: Vec<TraitMethod>,
-    },
-    /// Async/Await system - represents a future/promise
-    Future {
-        id: usize,
-        state: FutureState,
-        result: Option<Box<Value>>,
-    },
-    /// Interval type for range problems (start, end)
-    Interval(i64, i64),
-    None,
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Integer(i) => write!(f, "{}", i),
-            Value::Float(fl) => write!(f, "{}", fl),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Boolean(b) => write!(f, "{}", b),
-            Value::Char(c) => write!(f, "{}", c),
-            Value::List(list) => {
-                write!(f, "[")?;
-                for (i, item) in list.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Dict(dict) => {
-                write!(f, "{{")?;
-                for (i, (key, value)) in dict.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}: {}", key, value)?;
-                }
-                write!(f, "}}")
-            }
-            Value::Set(set) => {
-                write!(f, "{{")?;
-                for (i, item) in set.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "}}")
-            }
-            Value::Counter(counter) => {
-                write!(f, "Counter{{")?;
-                for (i, (key, count)) in counter.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}: {}", key, count)?;
-                }
-                write!(f, "}}")
-            }
-            Value::Function { name, .. } => write!(f, "<function {}>", name),
-            Value::Enum { name, .. } => write!(f, "<enum {}>", name),
-            Value::EnumVariant { variant_name, .. } => write!(f, "{}", variant_name),
-            Value::Class { name, .. } => write!(f, "<class {}>", name),
-            Value::Instance { class_name, .. } => write!(f, "<{} instance>", class_name),
-            Value::Constructor(class_name) => write!(f, "<constructor {}>", class_name),
-            Value::OnceCached { inner, .. } => write!(f, "<once {}>", inner),
-            Value::MirrorDispatch { method_name, .. } => write!(f, "<mirror {}>", method_name),
-            Value::GridNeighbors(_) => write!(f, "<grid.neighbors>"),
-            Value::GridNeighbors8(_) => write!(f, "<grid.neighbors8>"),
-            Value::GridFindAll(_) => write!(f, "<grid.find_all>"),
-            Value::GridRow(_) => write!(f, "<grid.row>"),
-            Value::GridCol(_) => write!(f, "<grid.col>"),
-            Value::MatrixRow(_) => write!(f, "<matrix.row>"),
-            Value::MatrixCol(_) => write!(f, "<matrix.col>"),
-            Value::MatrixDiagonal(_) => write!(f, "<matrix.diagonal>"),
-            Value::MatrixFlat(_) => write!(f, "<matrix.flat>"),
-            Value::MatrixRowSums(_) => write!(f, "<matrix.row_sums>"),
-            Value::MatrixColSums(_) => write!(f, "<matrix.col_sums>"),
-            Value::MatrixRowMeans(_) => write!(f, "<matrix.row_means>"),
-            Value::MatrixColMeans(_) => write!(f, "<matrix.col_means>"),
-            Value::Infinity(positive) => {
-                if *positive {
-                    write!(f, "inf")
-                } else {
-                    write!(f, "-inf")
-                }
-            }
-            Value::Emoji(e) => write!(f, "{}", e),
-            Value::Money(symbol, amount) => write!(f, "{}{}", symbol, amount),
-            Value::Hex(hex) => write!(f, "{}", hex),
-            Value::Date(date) => write!(f, "{}", date),
-            Value::Time(time) => write!(f, "{}", time),
-            Value::DateTime(datetime) => write!(f, "{}", datetime),
-            Value::Tuple(tuple) => {
-                write!(f, "(")?;
-                for (i, item) in tuple.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, ")")
-            }
-            Value::Range(start, end, step) => write!(f, "{}..{} by {}", start, end, step),
-            Value::Task(id) => write!(f, "<task {}>", id),
-            Value::Channel(id) => write!(f, "<channel {}>", id),
-            Value::Vector(vec) => {
-                write!(f, "vec[")?;
-                for (i, item) in vec.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Matrix(mat) => {
-                write!(f, "mat[")?;
-                for (i, row) in mat.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "[")?;
-                    for (j, item) in row.iter().enumerate() {
-                        if j > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "{}", item)?;
-                    }
-                    write!(f, "]")?;
-                }
-                write!(f, "]")
-            }
-            Value::Grid(grid) => {
-                write!(f, "grid[")?;
-                for (i, row) in grid.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "[")?;
-                    for (j, item) in row.iter().enumerate() {
-                        if j > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "{}", item)?;
-                    }
-                    write!(f, "]")?;
-                }
-                write!(f, "]")
-            }
-            Value::Deque(deque) => {
-                write!(f, "deque[")?;
-                for (i, item) in deque.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::PriorityQ(pq) => {
-                write!(f, "priorityq[")?;
-                for (i, (priority, value)) in pq.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "({}, {})", priority, value)?;
-                }
-                write!(f, "]")
-            }
-            Value::Queue(queue) => {
-                write!(f, "queue[")?;
-                for (i, item) in queue.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Ring {
-                buffer,
-                size,
-                head,
-                capacity,
-            } => {
-                write!(f, "ring[")?;
-                for i in 0..*size {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    let idx = (*head + i) % *capacity;
-                    write!(f, "{}", buffer[idx])?;
-                }
-                write!(f, "] (capacity: {})", capacity)
-            }
-            Value::Sorted(list) => {
-                write!(f, "sorted[")?;
-                for (i, item) in list.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Bag(bag) => {
-                write!(f, "bag{{")?;
-                for (i, (key, count)) in bag.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}: {}", key, count)?;
-                }
-                write!(f, "}}")
-            }
-            Value::Window {
-                source,
-                size,
-                start,
-            } => {
-                write!(f, "window[")?;
-                let end = (*start + *size).min(source.len());
-                for i in *start..end {
-                    if i > *start {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", source[i])?;
-                }
-                write!(f, "] (size: {})", size)
-            }
-            Value::View {
-                source,
-                start,
-                end,
-                mutable,
-            } => {
-                write!(f, "view[")?;
-                if let Value::List(list) = source.as_ref() {
-                    for i in *start..*end {
-                        if i > *start {
-                            write!(f, ", ")?;
-                        }
-                        if i < list.len() {
-                            write!(f, "{}", list[i])?;
-                        }
-                    }
-                }
-                write!(f, "]")?;
-                if *mutable {
-                    write!(f, " (mutable)")
-                } else {
-                    write!(f, " (immutable)")
-                }
-            }
-            Value::Prio(pq) => {
-                write!(f, "prio[")?;
-                for (i, (priority, value)) in pq.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "({}, {})", priority, value)?;
-                }
-                write!(f, "]")
-            }
-            Value::Diff(list) => {
-                write!(f, "diff[")?;
-                for (i, item) in list.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, "]")
-            }
-            Value::Span { source, start, end } => {
-                write!(f, "span[")?;
-                if let Value::List(list) = source.as_ref() {
-                    for i in *start..*end {
-                        if i > *start {
-                            write!(f, ", ")?;
-                        }
-                        if i < list.len() {
-                            write!(f, "{}", list[i])?;
-                        }
-                    }
-                }
-                write!(f, "]")
-            }
-            Value::MutSpan { source, start, end } => {
-                write!(f, "mut_span[")?;
-                if let Value::List(list) = source.as_ref() {
-                    for i in *start..*end {
-                        if i > *start {
-                            write!(f, ", ")?;
-                        }
-                        if i < list.len() {
-                            write!(f, "{}", list[i])?;
-                        }
-                    }
-                }
-                write!(f, "]")
-            }
-            Value::Chunk {
-                source: _,
-                chunk_size,
-                current_index,
-            } => {
-                write!(f, "chunk[size={}, index={}]", chunk_size, current_index)
-            }
-            Value::Sparse {
-                data,
-                default,
-                size,
-            } => {
-                write!(
-                    f,
-                    "sparse[size={}, stored={}, default={}]",
-                    size,
-                    data.len(),
-                    default
-                )
-            }
-            Value::Graph(graph) => {
-                write!(f, "graph{{")?;
-                for (i, (node, edges)) in graph.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}: [", node)?;
-                    for (j, (neighbor, weight)) in edges.iter().enumerate() {
-                        if j > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "({}, {})", neighbor, weight)?;
-                    }
-                    write!(f, "]")?;
-                }
-                write!(f, "}}")
-            }
-            Value::Encrypted { key_id, .. } => write!(f, "<encrypted:{}>", key_id),
-            Value::Secret(_) => write!(f, "[REDACTED]"),
-            Value::Tree { value, children } => {
-                write!(f, "tree{{value: {}, children: [", value)?;
-                for (i, child) in children.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", child)?;
-                }
-                write!(f, "]}}")
-            }
-            Value::Module { name, .. } => write!(f, "<module {}>", name),
-            Value::Trait { name, .. } => write!(f, "<trait {}>", name),
-            Value::Future { id, state, .. } => write!(f, "<future {} {:?}>", id, state),
-            Value::Interval(start, end) => write!(f, "interval({}, {})", start, end),
-            Value::None => write!(f, "none"),
-        }
-    }
-}
-
-pub struct Interpreter {
-    globals: HashMap<String, Value>,
-    locals: Vec<HashMap<String, Value>>,
-    statics: HashMap<String, Value>, // Static variables
-    call_depth: usize,               // Track recursion depth
-    defer_stack: Vec<Vec<(AstNode, Option<Value>)>>, // (expr, value for _) when block exits (LIFO)
-    once_cache: HashMap<usize, Value>, // @once decorator cached results
-    once_next_id: usize,
-    // Module system
-    module_cache: HashMap<String, Value>,
-    module_search_paths: Vec<String>,
-    // Trait system
-    #[allow(dead_code)]
-    trait_impls: HashMap<String, HashMap<String, Value>>, // type_name -> trait_name -> impl
-    // Async system
-    next_future_id: usize,
-}
+use super::*;
 
 impl Interpreter {
-    pub fn new() -> Self {
-        let mut interpreter = Self {
-            globals: HashMap::new(),
-            locals: Vec::new(),
-            statics: HashMap::new(),
-            call_depth: 0,
-            defer_stack: Vec::new(),
-            once_cache: HashMap::new(),
-            once_next_id: 0,
-            // Module system
-            module_cache: HashMap::new(),
-            module_search_paths: vec![".".to_string()],
-            // Trait system
-            trait_impls: HashMap::new(),
-            // Async system
-            next_future_id: 0,
-        };
-
-        // Add built-in functions
-        interpreter.add_builtins();
-        interpreter
-    }
-
-    fn add_builtins(&mut self) {
-        // Built-in functions will be added here
-        // For now, we'll handle them specially in function calls
-    }
-
-    fn apply_decorator(
-        &mut self,
-        decorator_name: &str,
-        decorator_args: &[crate::parser::AstNode],
-        func: Value,
-    ) -> Result<Value, String> {
-        // Evaluate decorator arguments
-        let mut args = Vec::new();
-        for arg in decorator_args {
-            args.push(self.eval_node(&Box::new(arg.clone()))?);
-        }
-
-        // Check if decorator is a built-in or user-defined function
-        let decorator_func = self.globals.get(decorator_name).cloned();
-        if let Some(Value::Function { params, body, .. }) = decorator_func {
-            // Call decorator with function as argument
-            let mut call_args = vec![func];
-            call_args.extend(args);
-            return self.call_function_internal(decorator_name, &call_args, &params, &body, None);
-        }
-
-        // Built-in decorators (from j.txt and jnew_features.txt)
-        match decorator_name {
-            "memo" | "cache" => Ok(self.create_memoized_function(func)?),
-            "timer" => Ok(self.create_timed_function(func)?),
-            "log_call" => Ok(self.create_logged_function(func)?),
-            "tco" => {
-                // Tail-call optimization hint - pass through (interpreter may optimize later)
-                Ok(func)
-            }
-            "once" => Ok(self.create_once_function(func)?),
-            "throttle" => {
-                let interval_secs = args
-                    .first()
-                    .and_then(|a| {
-                        if let Value::Float(f) = a {
-                            Some(*f)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(0.5);
-                Ok(self.create_throttled_function(func, interval_secs)?)
-            }
-            "debounce" => {
-                let delay_secs = args
-                    .first()
-                    .and_then(|a| {
-                        if let Value::Float(f) = a {
-                            Some(*f)
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(0.3);
-                Ok(self.create_debounced_function(func, delay_secs)?)
-            }
-            "profile" => Ok(self.create_profiled_function(func)?),
-            "trace" => Ok(self.create_trace_function(func)?),
-            "validate_args" | "validate" => {
-                // Schema-based validation - pass through for now; user can define validator fn
-                Ok(func)
-            }
-            "deprecated" => Ok(self.create_deprecated_function(func, &args)?),
-            _ => Err(format!("Decorator '{}' not found", decorator_name)),
-        }
-    }
-
-    fn create_memoized_function(&mut self, func: Value) -> Result<Value, String> {
-        // For now, return the function as-is
-        // Full memoization would require a cache map
-        Ok(func)
-    }
-
-    fn create_timed_function(&mut self, func: Value) -> Result<Value, String> {
-        // For now, return the function as-is
-        // Full timing would require wrapping the call
-        Ok(func)
-    }
-
-    fn create_logged_function(&mut self, func: Value) -> Result<Value, String> {
-        // For now, return the function as-is; full logging would wrap the call
-        Ok(func)
-    }
-
-    fn create_once_function(&mut self, func: Value) -> Result<Value, String> {
-        self.once_next_id += 1;
-        let id = self.once_next_id;
-        Ok(Value::OnceCached {
-            id,
-            inner: Box::new(func),
-        })
-    }
-
-    fn create_throttled_function(
-        &mut self,
-        func: Value,
-        _interval_secs: f64,
-    ) -> Result<Value, String> {
-        // @throttle(sec): max one call per interval - stub
-        Ok(func)
-    }
-
-    fn create_debounced_function(
-        &mut self,
-        func: Value,
-        _delay_secs: f64,
-    ) -> Result<Value, String> {
-        // @debounce(sec): delay until silence - stub
-        Ok(func)
-    }
-
-    fn create_profiled_function(&mut self, func: Value) -> Result<Value, String> {
-        // @profile: time + call count - stub
-        Ok(func)
-    }
-
-    fn create_trace_function(&mut self, func: Value) -> Result<Value, String> {
-        // @trace: verbose entry/exit - stub
-        Ok(func)
-    }
-
-    fn create_deprecated_function(&mut self, func: Value, args: &[Value]) -> Result<Value, String> {
-        // @deprecated("message") - stub; could warn on call
-        let _msg = args
-            .first()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "deprecated".to_string());
-        Ok(func)
-    }
-
-    fn call_function_internal(
-        &mut self,
-        _func_name: &str,
-        args: &[Value],
-        params: &[String],
-        body: &AstNode,
-        this_value: Option<Value>,
-    ) -> Result<Value, String> {
-        // Check depth BEFORE incrementing to prevent stack overflow
-        if self.call_depth >= 50 {
-            return Err(JError::stack_overflow(self.call_depth).to_string());
-        }
-
-        self.call_depth += 1;
-
-        // Push new scope
-        self.locals.push(HashMap::new());
-
-        // Bind this/self if method call
-        if let Some(ref this_val) = this_value {
-            if let Some(scope) = self.locals.last_mut() {
-                scope.insert("this".to_string(), this_val.clone());
-                scope.insert("self".to_string(), this_val.clone());
-            }
-        }
-
-        // Bind parameters
-        for (i, param) in params.iter().enumerate() {
-            if i < args.len() {
-                if let Some(scope) = self.locals.last_mut() {
-                    scope.insert(param.clone(), args[i].clone());
-                }
-            }
-        }
-
-        // Execute body
-        let result = self.eval_node(body);
-
-        // Pop scope and decrement call depth
-        self.locals.pop();
-        self.call_depth -= 1;
-
-        result
-    }
-
-    pub fn run(&mut self, source: &str) -> Result<(), String> {
-        // Tokenize
-        let mut lexer = crate::lexer::Lexer::new(source);
-        let tokens = lexer
-            .tokenize()
-            .map_err(|e| format!("Lexer error: {}", e))?;
-
-        // Parse
-        let mut parser = crate::parser::Parser::new(tokens);
-        let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
-
-        // Interpret
-        self.eval_node(&ast)
-            .map_err(|e| format!("Runtime error: {}", e))?;
-
-        Ok(())
-    }
-
-    pub fn evaluate(&mut self, node: &AstNode) -> Result<String, String> {
-        let value = self.eval_node(node)?;
-        match value {
-            Value::None => Ok(String::new()),
-            _ => Ok(value.to_string()),
-        }
-    }
-
-    fn eval_node(&mut self, node: &AstNode) -> Result<Value, String> {
-        match node {
-            AstNode::Integer(i) => Ok(Value::Integer(*i)),
-            AstNode::Float(f) => Ok(Value::Float(*f)),
-            AstNode::String(s) => Ok(Value::String(s.clone())),
-            AstNode::StringInterpolation { parts } => {
-                let mut result = String::new();
-                for part in parts {
-                    let val = self.eval_node(part)?;
-                    result.push_str(&val.to_string());
-                }
-                Ok(Value::String(result))
-            }
-            AstNode::Boolean(b) => Ok(Value::Boolean(*b)),
-            AstNode::Char(c) => Ok(Value::Char(*c)),
-
-            AstNode::Infinity(positive) => Ok(Value::Infinity(*positive)),
-            AstNode::Emoji(e) => Ok(Value::Emoji(e.clone())),
-            AstNode::Money(symbol, amount) => Ok(Value::Money(symbol.clone(), *amount)),
-            AstNode::Hex(hex) => Ok(Value::Hex(hex.clone())),
-            AstNode::Date(date) => Ok(Value::Date(date.clone())),
-            AstNode::Time(time) => Ok(Value::Time(time.clone())),
-            AstNode::DateTime(datetime) => Ok(Value::DateTime(datetime.clone())),
-
-            AstNode::Tuple(elements) => {
-                let mut tuple = Vec::new();
-                for element in elements {
-                    tuple.push(self.eval_node(element)?);
-                }
-                Ok(Value::Tuple(tuple))
-            }
-
-            AstNode::List(elements) => {
-                let mut list = Vec::new();
-                for element in elements {
-                    list.push(self.eval_node(element)?);
-                }
-                Ok(Value::List(list))
-            }
-
-            AstNode::Vector(elements) => {
-                let mut vector = Vec::new();
-                for element in elements {
-                    let val = self.eval_node(element)?;
-                    match val {
-                        Value::Integer(i) => vector.push(i as f64),
-                        Value::Float(f) => vector.push(f),
-                        _ => return Err("Vector elements must be numeric".to_string()),
-                    }
-                }
-                Ok(Value::Vector(vector))
-            }
-
-            AstNode::Matrix(rows) => {
-                let mut matrix = Vec::new();
-                for row in rows {
-                    let mut matrix_row = Vec::new();
-                    for element in row {
-                        let val = self.eval_node(element)?;
-                        match val {
-                            Value::Integer(i) => matrix_row.push(i as f64),
-                            Value::Float(f) => matrix_row.push(f),
-                            _ => return Err("Matrix elements must be numeric".to_string()),
-                        }
-                    }
-                    matrix.push(matrix_row);
-                }
-                // CRITICAL FIX: Validate matrix is not ragged
-                self.validate_matrix(&matrix)?;
-                Ok(Value::Matrix(matrix))
-            }
-
-            AstNode::Dict(pairs) => {
-                let mut dict = HashMap::new();
-                for (key_node, value_node) in pairs {
-                    let key = match self.eval_node(key_node)? {
-                        Value::String(s) => s,
-                        Value::Integer(i) => i.to_string(),
-                        _ => return Err("Dictionary keys must be strings or integers".to_string()),
-                    };
-                    let value = self.eval_node(value_node)?;
-                    dict.insert(key, value);
-                }
-                Ok(Value::Dict(dict))
-            }
-
-            AstNode::Identifier(name) => self.get_variable(name),
-
-            AstNode::VarDeclaration {
-                var_type,
-                name,
-                value,
-                immutable: _,
-                is_static,
-                type_modifier,
-            } => {
-                let mut val = self.eval_node(value)?;
-
-                // Handle type modifiers (enc, secret, etc.)
-                if let Some(modifier) = type_modifier {
-                    match modifier.as_str() {
-                        "enc" => {
-                            // Auto-encrypt the value
-                            let key_id = format!("auto-{}", name);
-                            use sha2::{Digest, Sha256};
-                            let mut hasher = Sha256::new();
-                            hasher.update(key_id.as_bytes());
-                            let key = hasher.finalize().to_vec();
-
-                            let json_str = match &val {
-                                Value::Integer(i) => i.to_string(),
-                                Value::Float(f) => f.to_string(),
-                                Value::String(s) => format!("\"{}\"", s),
-                                Value::Boolean(b) => b.to_string(),
-                                _ => serde_json::to_string(&format!("{:?}", val))
-                                    .unwrap_or_else(|_| "null".to_string()),
-                            };
-
-                            let nonce = crate::crypto::generate_nonce(12);
-                            let ciphertext = crate::crypto::enigma_encrypt(
-                                json_str.as_bytes(),
-                                &key,
-                                &nonce,
-                                b"",
-                            )?;
-
-                            val = Value::Encrypted {
-                                ciphertext,
-                                key_id,
-                                nonce,
-                            };
-                        }
-                        "secret" => {
-                            // Wrap in Secret type
-                            let secret_str = match val {
-                                Value::String(s) => s,
-                                Value::Integer(i) => i.to_string(),
-                                _ => format!("{:?}", val),
-                            };
-                            val = Value::Secret(secret_str);
-                        }
-                        _ => {}
-                    }
-                }
-
-                // Convert the value based on the declared type
-                let converted_val = match var_type.as_str() {
-                    "vec" | "vector" => {
-                        match val {
-                            Value::Vector(_) => val, // Already a vector, no conversion needed
-                            Value::List(list) => {
-                                // Convert list to vector
-                                let mut vector = Vec::new();
-                                for item in list {
-                                    match item {
-                                        Value::Integer(i) => vector.push(i as f64),
-                                        Value::Float(f) => vector.push(f),
-                                        _ => {
-                                            return Err(
-                                                "Vector elements must be numeric".to_string()
-                                            )
-                                        }
-                                    }
-                                }
-                                Value::Vector(vector)
-                            }
-                            _ => {
-                                return Err(
-                                    "Vector must be initialized with a list or vector".to_string()
-                                )
-
-                    }
-                    "mat" | "matrix" => {
-                        match val {
-                            Value::Matrix(_) => val, // Already a matrix, no conversion needed
-                            Value::List(list) => {
-                                // Convert list of lists to matrix
-                                let mut matrix = Vec::new();
-                                for row_val in list {
-                                    match row_val {
-                                        Value::List(row) => {
-                                            let mut matrix_row = Vec::new();
-                                            for item in row {
-                                                match item {
-                                                    Value::Integer(i) => matrix_row.push(i as f64),
-                                                    Value::Float(f) => matrix_row.push(f),
-                                                    _ => {
-                                                        return Err(
-                                                            "Matrix elements must be numeric"
-                                                                .to_string(),
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            matrix.push(matrix_row);
-                                        }
-                                        _ => return Err("Matrix rows must be lists".to_string()),
-                                    }
-                                }
-                                Value::Matrix(matrix)
-                            }
-                            _ => {
-                                return Err(
-                                    "Matrix must be initialized with a list of lists or matrix"
-                                        .to_string(),
-                                )
-                            }
-                        }
-                    }
-                    "set" => {
-                        match val {
-                            Value::Set(_) => val, // Already a set
-                            Value::List(list) => {
-                                // Convert list to set
-                                let mut set = HashSet::new();
-                                for item in list {
-                                    let key = match item {
-                                        Value::String(s) => s,
-                                        Value::Integer(i) => i.to_string(),
-                                        Value::Float(f) => f.to_string(),
-                                        Value::Boolean(b) => b.to_string(),
-                                        _ => {
-                                            return Err(
-                                                "Set elements must be convertible to strings"
-                                                    .to_string(),
-                                            )
-                                        }
-                                    };
-                                    set.insert(key);
-                                }
-                                Value::Set(set)
-                            }
-                            _ => return Err("Set must be initialized with a list".to_string()),
-                        }
-                    }
-                    "counter" => {
-                        match val {
-                            Value::Counter(_) => val, // Already a counter
-                            Value::String(s) => {
-                                // Count characters in string
-                                let mut counter = HashMap::new();
-                                for ch in s.chars() {
-                                    let key = ch.to_string();
-                                    *counter.entry(key).or_insert(0) += 1;
-                                }
-                                Value::Counter(counter)
-                            }
-                            Value::List(list) => {
-                                // Count elements in list
-                                let mut counter = HashMap::new();
-                                for item in list {
-                                    let key =
-                                        match item {
-                                            Value::String(s) => s,
-                                            Value::Integer(i) => i.to_string(),
-                                            Value::Float(f) => f.to_string(),
-                                            Value::Boolean(b) => b.to_string(),
-                                            _ => return Err(
-                                                "Counter elements must be convertible to strings"
-                                                    .to_string(),
-                                            ),
-                                        };
-                                    *counter.entry(key).or_insert(0) += 1;
-                                }
-                                Value::Counter(counter)
-                            }
-                            _ => {
-                                return Err(
-                                    "Counter must be initialized with a string or list".to_string()
-                                )
-                            }
-                        }
-                    }
-                    "deque" => match val {
-                        Value::Deque(_) => val,
-                        Value::List(list) => Value::Deque(list),
-                        _ => return Err("Deque must be initialized with a list".to_string()),
-                    },
-                    "priorityq" => {
-                        match val {
-                            Value::PriorityQ(_) => val,
-                            Value::List(list) => {
-                                // Convert list of (priority, value) tuples to priority queue
-                                let mut pq = Vec::new();
-                                for item in list {
-                                    match item {
-                                        Value::Tuple(tuple) if tuple.len() == 2 => {
-                                            let priority = match &tuple[0] {
-                                                Value::Integer(i) => *i,
-                                                Value::Float(f) => *f as i64,
-                                                _ => return Err("Priority must be numeric".to_string()),
-                                            };
-                                            pq.push((priority, tuple[1].clone()));
-                                        }
-                                        _ => return Err("Priority queue elements must be (priority, value) tuples".to_string()),
-                                    }
-                                }
-                                Value::PriorityQ(pq)
-                            }
-                            _ => {
-                                return Err(
-                                    "Priority queue must be initialized with a list of tuples"
-                                        .to_string(),
-                                )
-                            }
-                        }
-                    }
-                    "graph" => {
-                        match val {
-                            Value::Graph(_) => val,
-                            Value::Dict(dict) => {
-                                // Convert dict to graph: {node: [(neighbor, weight), ...]}
-                                let mut graph = HashMap::new();
-                                for (node, edges_val) in dict {
-                                    match edges_val {
-                                        Value::List(edges) => {
-                                            let mut edge_list = Vec::new();
-                                            for edge in edges {
-                                                match edge {
-                                                    Value::Tuple(tuple) if tuple.len() == 2 => {
-                                                        let neighbor = match &tuple[0] {
-                                                            Value::String(s) => s.clone(),
-                                                            _ => return Err("Graph neighbor must be a string".to_string()),
-                                                        };
-                                                        let weight = match &tuple[1] {
-                                                            Value::Float(f) => *f,
-                                                            Value::Integer(i) => *i as f64,
-                                                            _ => return Err("Graph weight must be numeric".to_string()),
-                                                        };
-                                                        edge_list.push((neighbor, weight));
-                                                    }
-                                                    _ => return Err("Graph edges must be (neighbor, weight) tuples".to_string()),
-                                                }
-                                            }
-                                            graph.insert(node, edge_list);
-                                        }
-                                        _ => {
-                                            return Err(
-                                                "Graph node edges must be a list".to_string()
-                                            )
-                                        }
-                                    }
-                                }
-                                Value::Graph(graph)
-                            }
-                            _ => {
-                                return Err(
-                                    "Graph must be initialized with a dictionary".to_string()
-                                )
-                            }
-                        }
-                    }
-                    "grid" => match val {
-                        Value::Grid(_) => val,
-                        Value::Matrix(rows) => {
-                            let grid: Vec<Vec<Value>> = rows
-                                .into_iter()
-                                .map(|row| row.into_iter().map(Value::Float).collect())
-                                .collect();
-                            Value::Grid(grid)
-                        }
-                        Value::List(rows) => {
-                            let mut grid = Vec::new();
-                            for row in rows {
-                                match row {
-                                    Value::List(cells) => grid.push(cells),
-                                    _ => {
-                                        return Err("Grid must be a list of lists (2D)".to_string())
-                                    }
-                                }
-                            }
-                            Value::Grid(grid)
-                        }
-                        _ => {
-                            return Err(
-                                "Grid must be initialized with a list of lists or matrix literal"
-                                    .to_string(),
-                            )
-                        }
-                    },
-                    "tree" => {
-                        match val {
-                            Value::Tree { .. } => val,
-                            Value::Dict(dict) => {
-                                // Convert dict to tree: {value: ..., children: [...]}
-                                let value = dict
-                                    .get("value")
-                                    .ok_or_else(|| "Tree must have 'value' field".to_string())?
-                                    .clone();
-                                let children = match dict.get("children") {
-                                    Some(Value::List(children_list)) => children_list.clone(),
-                                    Some(_) => {
-                                        return Err("Tree 'children' must be a list".to_string())
-                                    }
-                                    None => Vec::new(),
-                                };
-                                Value::Tree {
-                                    value: Box::new(value),
-                                    children,
-                                }
-                            }
-                            _ => {
-                                return Err("Tree must be initialized with a dictionary".to_string())
-                            }
-                        }
-                    }
-                    // Advanced array types
-                    "span" => {
-                        match val {
-                            Value::Span { .. } => val,
-                            Value::List(list) => {
-                                // Create a span of the entire list
-                                let len = list.len();
-                                Value::Span {
-                                    source: Box::new(Value::List(list)),
-                                    start: 0,
-                                    end: len,
-                                }
-                            }
-                            _ => return Err("Span must be initialized with a list".to_string()),
-                        }
-                    }
-                    "mut_span" => match val {
-                        Value::MutSpan { .. } => val,
-                        Value::List(list) => {
-                            let len = list.len();
-                            Value::MutSpan {
-                                source: Box::new(Value::List(list)),
-                                start: 0,
-                                end: len,
-                            }
-                        }
-                        _ => return Err("MutSpan must be initialized with a list".to_string()),
-                    },
-                    "chunk" => match val {
-                        Value::Chunk { .. } => val,
-                        Value::List(list) => Value::Chunk {
-                            source: Box::new(Value::List(list)),
-                            chunk_size: 1,
-                            current_index: 0,
-                        },
-                        _ => return Err("Chunk must be initialized with a list".to_string()),
-                    },
-                    "sparse" => {
-                        match val {
-                            Value::Sparse { .. } => val,
-                            Value::List(list) => {
-                                // Convert list to sparse array
-                                let mut data = HashMap::new();
-                                for (i, item) in list.iter().enumerate() {
-                                    data.insert(i, item.clone());
-                                }
-                                Value::Sparse {
-                                    data,
-                                    default: Box::new(Value::Integer(0)),
-                                    size: list.len(),
-                                }
-                            }
-                            Value::Integer(size) => {
-                                // Create empty sparse array of given size
-                                Value::Sparse {
-                                    data: HashMap::new(),
-                                    default: Box::new(Value::Integer(0)),
-                                    size: size as usize,
-                                }
-                            }
-                            _ => {
-                                return Err(
-                                    "Sparse must be initialized with a list or size".to_string()
-                                )
-                            }
-                        }
-                    }
-                    "ring" => {
-                        match val {
-                            Value::Ring { .. } => val,
-                            Value::Integer(capacity) => {
-                                // Create empty ring buffer with given capacity
-                                Value::Ring {
-                                    buffer: vec![Value::None; capacity as usize],
-                                    capacity: capacity as usize,
-                                    head: 0,
-                                    size: 0,
-                                }
-                            }
-                            Value::List(list) => {
-                                // Create ring from list
-                                let capacity = list.len();
-                                Value::Ring {
-                                    buffer: list,
-                                    capacity,
-                                    head: 0,
-                                    size: capacity,
-                                }
-                            }
-                            _ => {
-                                return Err("Ring must be initialized with capacity (int) or list"
-                                    .to_string())
-                            }
-                        }
-                    }
-                    _ => val, // No conversion needed for other types
-                };
-
-                if *is_static {
-                    self.statics.insert(name.clone(), converted_val.clone());
-                } else {
-                    self.set_variable(name.clone(), converted_val.clone());
-                }
-                Ok(converted_val)
-            }
-
-            AstNode::EnumDeclaration {
-                name,
-                backing_type: _,
-                variants,
-            } => {
-                let mut variant_map = HashMap::new();
-                let mut next_int_val = 1;
-
-                for (var_name, val_expr) in variants {
-                    let val = if let Some(expr) = val_expr {
-                        self.eval_node(expr)?
-                    } else {
-                        let v = Value::Integer(next_int_val);
-                        next_int_val += 1;
-                        v
-                    };
-                    variant_map.insert(var_name.clone(), val);
-                }
-
-                let enum_val = Value::Enum {
-                    name: name.clone(),
-                    variants: variant_map,
-                };
-
-                self.set_variable(name.clone(), enum_val.clone());
-                Ok(enum_val)
-            }
-
-            AstNode::ClassDeclaration {
-                name,
-                class_type,
-                parent,
-                traits: _,
-                fields,
-                methods,
-                static_fields,
-                static_methods,
-            } => {
-                let mut class_fields = HashMap::new();
-                let mut class_methods = HashMap::new();
-                let mut class_static_fields = HashMap::new();
-                let mut class_static_methods = HashMap::new();
-
-                for field in fields {
-                    let default_val = if let Some(ref expr) = field.default_value {
-                        self.eval_node(expr)?
-                    } else {
-                        Value::None
-                    };
-                    class_fields.insert(field.name.clone(), default_val);
-                }
-
-                for field in static_fields {
-                    let default_val = if let Some(ref expr) = field.default_value {
-                        self.eval_node(expr)?
-                    } else {
-                        Value::None
-                    };
-                    class_static_fields.insert(field.name.clone(), default_val);
-                }
-
-                for method in methods {
-                    if let AstNode::FunctionDeclaration {
-                        name: method_name,
-                        params,
-                        body,
-                        ..
-                    } = method
-                    {
-                        let param_names: Vec<String> =
-                            params.iter().map(|(_, n)| n.clone()).collect();
-                        let func = Value::Function {
-                            name: method_name.clone(),
-                            params: param_names,
-                            body: body.clone(),
-                        };
-                        class_methods.insert(method_name.clone(), func);
-                    }
-                }
-
-                for method in static_methods {
-                    if let AstNode::FunctionDeclaration {
-                        name: method_name,
-                        params,
-                        body,
-                        ..
-                    } = method
-                    {
-                        let param_names: Vec<String> =
-                            params.iter().map(|(_, n)| n.clone()).collect();
-                        let func = Value::Function {
-                            name: method_name.clone(),
-                            params: param_names,
-                            body: body.clone(),
-                        };
-                        class_static_methods.insert(method_name.clone(), func);
-                    }
-                }
-
-                let class_val = Value::Class {
-                    name: name.clone(),
-                    class_type: class_type.clone(),
-                    parent: parent.clone(),
-                    fields: class_fields,
-                    methods: class_methods,
-                    static_fields: class_static_fields,
-                    static_methods: class_static_methods,
-                };
-
-                self.set_variable(name.clone(), class_val.clone());
-                Ok(class_val)
-            }
-
-            AstNode::FunctionDeclaration {
-                name,
-                params,
-                body,
-                decorators,
-                ..
-            } => {
-                let param_names: Vec<String> =
-                    params.iter().map(|(_, name)| name.clone()).collect();
-                let mut func = Value::Function {
-                    name: name.clone(),
-                    params: param_names,
-                    body: body.clone(),
-                };
-
-                // Apply decorators (bottom-to-top order)
-                for decorator in decorators.iter().rev() {
-                    func = self.apply_decorator(&decorator.name, &decorator.args, func)?;
-                }
-
-                self.set_variable(name.clone(), func.clone());
-                Ok(func)
-            }
-
-            AstNode::FunctionCall { name, args } => self.call_function(name, args),
-
-            AstNode::Call { callee, args } => {
-                let (callee_val, this_opt) =
-                    if let AstNode::DotAccess { object, field } = callee.as_ref() {
-                        let receiver = self.eval_node(object)?;
-                        let val = self.get_property(&receiver, field)?;
-                        let this_opt = match &receiver {
-                            Value::Instance { .. } => Some(receiver),
-                            _ => None,
-                        };
-                        (val, this_opt)
-                    } else {
-                        (self.eval_node(callee)?, None)
-                    };
-                self.call_value(callee_val, args, this_opt)
-            }
-
-            AstNode::BroadcastCall { callee, args } => {
-                let callee_val = self.eval_node(callee)?;
-                let evaled_args: Vec<Value> = args
-                    .iter()
-                    .map(|a| self.eval_node(a))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let len = evaled_args.iter().fold(1usize, |acc, v| {
-                    if let Value::List(l) = v {
-                        acc.max(l.len())
-                    } else {
-                        acc
-                    }
-                });
-                let mut results = Vec::with_capacity(len);
-                for i in 0..len {
-                    let call_args: Vec<Value> = evaled_args
-                        .iter()
-                        .map(|v| match v {
-                            Value::List(l) => l.get(i).cloned().unwrap_or(Value::None),
-                            _ => v.clone(),
-                        })
-                        .collect();
-                    let result = self.call_value_with_args(callee_val.clone(), &call_args, None)?;
-                    results.push(result);
-                }
-                if results.len() == 1 && evaled_args.iter().all(|v| !matches!(v, Value::List(_))) {
-                    Ok(results.into_iter().next().unwrap_or(Value::None))
-                } else {
-                    Ok(Value::List(results))
-                }
-            }
-
-            AstNode::Binary {
-                left,
-                operator,
-                right,
-            } => {
-                // Short-circuit evaluation for And/Or
-                match operator {
-                    BinaryOp::And => {
-                        let left_val = self.eval_node(left)?;
-                        match left_val {
-                            Value::Boolean(false) => Ok(Value::Boolean(false)),
-                            Value::Boolean(true) => {
-                                let right_val = self.eval_node(right)?;
-                                match right_val {
-                                    Value::Boolean(b) => Ok(Value::Boolean(b)),
-                                    _ => {
-                                        Err(
-                                            "And operator requires boolean operands".to_string()
-                                        )
-                                    }
-                                }
-                            }
-                            _ => Err("And operator requires boolean operands".to_string()),
-                        }
-                    }
-                    BinaryOp::Or => {
-                        let left_val = self.eval_node(left)?;
-                        match left_val {
-                            Value::Boolean(true) => Ok(Value::Boolean(true)),
-                            Value::Boolean(false) => {
-                                let right_val = self.eval_node(right)?;
-                                match right_val {
-                                    Value::Boolean(b) => Ok(Value::Boolean(b)),
-                                    _ => {
-                                        Err(
-                                            "Or operator requires boolean operands".to_string()
-                                        )
-                                    }
-                                }
-                            }
-                            _ => Err("Or operator requires boolean operands".to_string()),
-                        }
-                    }
-                    _ => {
-                        // Normal evaluation for other operators
-                        let left_val = self.eval_node(left)?;
-                        let right_val = self.eval_node(right)?;
-                        self.eval_binary_op(&left_val, operator, &right_val)
-                    }
-                }
-            }
-
-            AstNode::Unary { operator, operand } => {
-                let val = self.eval_node(operand)?;
-                self.eval_unary_op(operator, &val)
-            }
-
-            AstNode::Pipeline { left, right } => {
-                let left_val = self.eval_node(left)?;
-
-                // Set the pipeline value as '_' for the right side
-                self.set_variable("_".to_string(), left_val.clone());
-
-                // Also set it as a special pipeline variable
-                self.set_variable("__pipeline__".to_string(), left_val);
-
-                let result = self.eval_node(right)?;
-
-                // Clean up pipeline variable
-                self.set_variable("__pipeline__".to_string(), Value::None);
-
-                Ok(result)
-            }
-
-            AstNode::DotAccess { object, field } => {
-                let obj_val = self.eval_node(object)?;
-                match obj_val {
-                    Value::Enum {
-                        name: enum_name,
-                        variants,
-                    } => {
-                        if let Some(val) = variants.get(field) {
-                            Ok(Value::EnumVariant {
-                                enum_name: enum_name.clone(),
-                                variant_name: field.clone(),
-                                value: Box::new(val.clone()),
-                            })
-                        } else {
-                            match field.as_str() {
-                                "count" => Ok(Value::Integer(variants.len() as i64)),
-                                "names" => {
-                                    let names: Vec<Value> =
-                                        variants.keys().map(|k| Value::String(k.clone())).collect();
-                                    Ok(Value::List(names))
-                                }
-                                "values" => {
-                                    let vals: Vec<Value> = variants.values().cloned().collect();
-                                    Ok(Value::List(vals))
-                                }
-                                _ => Err(format!(
-                                    "Unknown variant or method '{}' on enum '{}'",
-                                    field, enum_name
-                                )),
-                            }
-                        }
-                    }
-                    Value::EnumVariant {
-                        enum_name: _,
-                        variant_name,
-                        value,
-                    } => match field.as_str() {
-                        "label" | "name" => Ok(Value::String(variant_name)),
-                        "value" => Ok(*value),
-                        _ => Err(format!("Unknown property '{}' on enum variant", field)),
-                    },
-                    Value::Class {
-                        name: class_name,
-                        class_type: _,
-                        parent: _,
-                        fields: _,
-                        methods: _,
-                        static_fields,
-                        static_methods,
-                    } => {
-                        if field == "new" {
-                            Ok(Value::Constructor(class_name.clone()))
-                        } else if let Some(v) = static_fields.get(field) {
-                            Ok(v.clone())
-                        } else if let Some(v) = static_methods.get(field) {
-                            Ok(v.clone())
-                        } else {
-                            Err(format!(
-                                "Unknown static field or method '{}' on class '{}'",
-                                field, class_name
-                            ))
-                        }
-                    }
-                    Value::Instance { class_name, fields } => {
-                        if let Some(v) = fields.get(field) {
-                            Ok(v.clone())
-                        } else {
-                            self.get_instance_method(class_name.as_str(), field)
-                        }
-                    }
-                    Value::Dict(dict) => {
-                        // Regular dictionary field access
-                        if let Some(value) = dict.get(field) {
-                            Ok(value.clone())
-                        } else {
-                            // Check if it's a dictionary method
-                            match field.as_str() {
-                                "items" => {
-                                    let mut items = Vec::new();
-                                    for (k, v) in dict.iter() {
-                                        items.push(Value::Tuple(vec![
-                                            Value::String(k.clone()),
-                                            v.clone(),
-                                        ]));
-                                    }
-                                    Ok(Value::List(items))
-                                }
-                                "keys" => {
-                                    let keys: Vec<Value> =
-                                        dict.keys().map(|k| Value::String(k.clone())).collect();
-                                    Ok(Value::List(keys))
-                                }
-                                "values" => {
-                                    let values: Vec<Value> = dict.values().cloned().collect();
-                                    Ok(Value::List(values))
-                                }
-                                "has" => {
-                                    Err(
-                                        "dict.has() requires a key argument - use dict.has(key)"
-                                            .to_string(),
-                                    )
-                                }
-                                "get" => {
-                                    Err(
-                                        "dict.get() requires key and optional default arguments"
-                                            .to_string(),
-                                    )
-                                }
-                                "remove" => {
-                                    Err("dict.remove() requires a key argument - use dict.remove(key)".to_string())
-                                }
-                                "merge" => {
-                                    Err(
-                                        "dict.merge() requires another dict argument".to_string()
-                                    )
-                                }
-                                "update" => {
-                                    Err(
-                                        "dict.update() requires another dict argument".to_string()
-                                    )
-                                }
-                                "clear" => {
-                                    Err("dict.clear() cannot be called as a method - use clear(dict)".to_string())
-                                }
-                                "size" | "len" | "length" => Ok(Value::Integer(dict.len() as i64)),
-                                _ => Err(format!("Dictionary field '{}' not found", field)),
-                            }
-                        }
-                    }
-                    Value::List(list) => {
-                        // List methods
-                        match field.as_str() {
-                            "len" | "length" | "size" => Ok(Value::Integer(list.len() as i64)),
-                            "first" => list
-                                .first()
-                                .cloned()
-                                .ok_or_else(|| "List is empty".to_string()),
-                            "last" => list
-                                .last()
-                                .cloned()
-                                .ok_or_else(|| "List is empty".to_string()),
-                            "sum" => {
-                                let mut sum = 0.0;
-                                for item in list.iter() {
-                                    match item {
-                                        Value::Integer(i) => sum += *i as f64,
-                                        Value::Float(f) => sum += f,
-                                        _ => {
-                                            return Err("sum() requires numeric values".to_string())
-                                        }
-                                    }
-                                }
-                                if list.iter().all(|v| matches!(v, Value::Integer(_))) {
-                                    Ok(Value::Integer(sum as i64))
-                                } else {
-                                    Ok(Value::Float(sum))
-                                }
-                            }
-                            "product" => {
-                                let mut product = 1.0;
-                                for item in list.iter() {
-                                    match item {
-                                        Value::Integer(i) => product *= *i as f64,
-                                        Value::Float(f) => product *= f,
-                                        _ => {
-                                            return Err(
-                                                "product() requires numeric values".to_string()
-                                            )
-                                        }
-                                    }
-                                }
-                                if list.iter().all(|v| matches!(v, Value::Integer(_))) {
-                                    Ok(Value::Integer(product as i64))
-                                } else {
-                                    Ok(Value::Float(product))
-                                }
-                            }
-                            "min" => {
-                                if list.is_empty() {
-                                    return Err("min() requires non-empty list".to_string());
-                                }
-                                let mut min_val = list[0].clone();
-                                for item in list.iter().skip(1) {
-                                    match (&min_val, item) {
-                                        (Value::Integer(a), Value::Integer(b)) if b < a => {
-                                            min_val = item.clone()
-                                        }
-                                        (Value::Float(a), Value::Float(b)) if b < a => {
-                                            min_val = item.clone()
-                                        }
-                                        (Value::Integer(a), Value::Float(b))
-                                            if (*b as i64) < *a =>
-                                        {
-                                            min_val = item.clone()
-                                        }
-                                        (Value::Float(a), Value::Integer(b))
-                                            if (*b as f64) < *a =>
-                                        {
-                                            min_val = item.clone()
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                Ok(min_val)
-                            }
-                            "max" => {
-                                if list.is_empty() {
-                                    return Err("max() requires non-empty list".to_string());
-                                }
-                                let mut max_val = list[0].clone();
-                                for item in list.iter().skip(1) {
-                                    match (&max_val, item) {
-                                        (Value::Integer(a), Value::Integer(b)) if b > a => {
-                                            max_val = item.clone()
-                                        }
-                                        (Value::Float(a), Value::Float(b)) if b > a => {
-                                            max_val = item.clone()
-                                        }
-                                        (Value::Integer(a), Value::Float(b))
-                                            if (*b as i64) > *a =>
-                                        {
-                                            max_val = item.clone()
-                                        }
-                                        (Value::Float(a), Value::Integer(b))
-                                            if (*b as f64) > *a =>
-                                        {
-                                            max_val = item.clone()
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                Ok(max_val)
-                            }
-                            "scan_max" => {
-                                let mut result = Vec::new();
-                                let mut running_max = None;
-                                for item in list.iter() {
-                                    let v = match item {
-                                        Value::Integer(i) => *i as f64,
-                                        Value::Float(f) => *f,
-                                        _ => {
-                                            return Err(
-                                                "scan_max() requires numeric list".to_string()
-                                            )
-                                        }
-                                    };
-                                    running_max =
-                                        Some(running_max.map(|m: f64| m.max(v)).unwrap_or(v));
-                                    result.push(Value::Float(running_max.unwrap()));
-                                }
-                                if list.iter().all(|v| matches!(v, Value::Integer(_))) {
-                                    Ok(Value::List(
-                                        result
-                                            .iter()
-                                            .map(|v| {
-                                                if let Value::Float(f) = v {
-                                                    Value::Integer(*f as i64)
-                                                } else {
-                                                    v.clone()
-                                                }
-                                            })
-                                            .collect(),
-                                    ))
-                                } else {
-                                    Ok(Value::List(result))
-                                }
-                            }
-                            "scan_sum" => {
-                                let mut result = Vec::new();
-                                let mut running = 0.0;
-                                for item in list.iter() {
-                                    match item {
-                                        Value::Integer(i) => running += *i as f64,
-                                        Value::Float(f) => running += f,
-                                        _ => {
-                                            return Err(
-                                                "scan_sum() requires numeric list".to_string()
-                                            )
-                                        }
-                                    }
-                                    result.push(Value::Float(running));
-                                }
-                                if list.iter().all(|v| matches!(v, Value::Integer(_))) {
-                                    Ok(Value::List(
-                                        result
-                                            .iter()
-                                            .map(|v| {
-                                                if let Value::Float(f) = v {
-                                                    Value::Integer(*f as i64)
-                                                } else {
-                                                    v.clone()
-                                                }
-                                            })
-                                            .collect(),
-                                    ))
-                                } else {
-                                    Ok(Value::List(result))
-                                }
-                            }
-                            "scan_right_max" => {
-                                let mut result = Vec::new();
-                                let mut running_max = None;
-                                for item in list.iter().rev() {
-                                    let v = match item {
-                                        Value::Integer(i) => *i as f64,
-                                        Value::Float(f) => *f,
-                                        _ => {
-                                            return Err("scan_right_max() requires numeric list"
-                                                .to_string())
-                                        }
-                                    };
-                                    running_max =
-                                        Some(running_max.map(|m: f64| m.max(v)).unwrap_or(v));
-                                    if let Some(max_val) = running_max {
-                                        result.push(Value::Float(max_val));
-                                    }
-                                }
-                                result.reverse();
-                                if list.iter().all(|v| matches!(v, Value::Integer(_))) {
-                                    Ok(Value::List(
-                                        result
-                                            .iter()
-                                            .map(|v| {
-                                                if let Value::Float(f) = v {
-                                                    Value::Integer(*f as i64)
-                                                } else {
-                                                    v.clone()
-                                                }
-                                            })
-                                            .collect(),
-                                    ))
-                                } else {
-                                    Ok(Value::List(result))
-                                }
-                            }
-                            "mean" | "average" | "avg" => {
-                                if list.is_empty() {
-                                    return Err("mean() requires non-empty list".to_string());
-                                }
-                                let mut sum = 0.0;
-                                for item in list.iter() {
-                                    match item {
-                                        Value::Integer(i) => sum += *i as f64,
-                                        Value::Float(f) => sum += f,
-                                        _ => {
-                                            return Err("mean() requires numeric values".to_string())
-                                        }
-                                    }
-                                }
-                                Ok(Value::Float(sum / list.len() as f64))
-                            }
-                            "median" => {
-                                if list.is_empty() {
-                                    return Err("median() requires non-empty list".to_string());
-                                }
-                                let mut sorted = list.clone();
-                                sorted.sort_by(|a, b| match (a, b) {
-                                    (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
-                                    (Value::Float(x), Value::Float(y)) => {
-                                        x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-                                    }
-                                    (Value::Integer(x), Value::Float(y)) => (*x as f64)
-                                        .partial_cmp(y)
-                                        .unwrap_or(std::cmp::Ordering::Equal),
-                                    (Value::Float(x), Value::Integer(y)) => x
-                                        .partial_cmp(&(*y as f64))
-                                        .unwrap_or(std::cmp::Ordering::Equal),
-                                    _ => std::cmp::Ordering::Equal,
-                                });
-                                let mid = sorted.len() / 2;
-                                if sorted.len() % 2 == 0 {
-                                    // Even number of elements - average the two middle ones
-                                    match (&sorted[mid - 1], &sorted[mid]) {
-                                        (Value::Integer(a), Value::Integer(b)) => {
-                                            Ok(Value::Float((a + b) as f64 / 2.0))
-                                        }
-                                        (Value::Float(a), Value::Float(b)) => {
-                                            Ok(Value::Float((a + b) / 2.0))
-                                        }
-                                        (Value::Integer(a), Value::Float(b)) => {
-                                            Ok(Value::Float((*a as f64 + b) / 2.0))
-                                        }
-                                        (Value::Float(a), Value::Integer(b)) => {
-                                            Ok(Value::Float((a + *b as f64) / 2.0))
-                                        }
-                                        _ => Ok(sorted[mid - 1].clone()),
-                                    }
-                                } else {
-                                    Ok(sorted[mid].clone())
-                                }
-                            }
-                            "sorted" => {
-                                let mut sorted = list.clone();
-                                sorted.sort_by(|a, b| match (a, b) {
-                                    (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
-                                    (Value::Float(x), Value::Float(y)) => {
-                                        x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-                                    }
-                                    (Value::Integer(x), Value::Float(y)) => (*x as f64)
-                                        .partial_cmp(y)
-                                        .unwrap_or(std::cmp::Ordering::Equal),
-                                    (Value::Float(x), Value::Integer(y)) => x
-                                        .partial_cmp(&(*y as f64))
-                                        .unwrap_or(std::cmp::Ordering::Equal),
-                                    (Value::String(x), Value::String(y)) => x.cmp(y),
-                                    _ => std::cmp::Ordering::Equal,
-                                });
-                                Ok(Value::List(sorted))
-                            }
-                            "reversed" => {
-                                let mut reversed = list.clone();
-                                reversed.reverse();
-                                Ok(Value::List(reversed))
-                            }
-                            "unique" | "distinct" => {
-                                let mut seen = std::collections::HashSet::new();
-                                let mut unique = Vec::new();
-                                for item in list {
-                                    let key = format!("{:?}", item);
-                                    if seen.insert(key) {
-                                        unique.push(item.clone());
-                                    }
-                                }
-                                Ok(Value::List(unique))
-                            }
-                            "empty" | "is_empty" => Ok(Value::Boolean(list.is_empty())),
-                            "any" => {
-                                Err(
-                                    "list.any() requires a predicate function - use any(list, fn)"
-                                        .to_string(),
-                                )
-                            }
-                            "all" => {
-                                Err(
-                                    "list.all() requires a predicate function - use all(list, fn)"
-                                        .to_string(),
-                                )
-                            }
-                            "count" => {
-                                Err(
-                                    "list.count() requires an argument - use list.count(value)"
-                                        .to_string(),
-                                )
-                            }
-                            "contains" => {
-                                Err("list.contains() requires an argument - use list.contains(value)".to_string())
-                            }
-                            "index" | "find" => {
-                                Err(
-                                    "list.index() requires an argument - use list.index(value)"
-                                        .to_string(),
-                                )
-                            }
-                            "join" => {
-                                Err("list.join() requires a separator argument - use list.join(sep)".to_string())
-                            }
-                            _ => Err(format!("List method '{}' not found", field)),
-                        }
-                    }
-                    Value::String(s) => {
-                        // String methods
-                        match field.as_str() {
-                            "len" | "length" | "size" => Ok(Value::Integer(s.len() as i64)),
-                            "first" => s
-                                .chars()
-                                .next()
-                                .map(Value::Char)
-                                .ok_or_else(|| "String is empty".to_string()),
-                            "last" => s
-                                .chars()
-                                .last()
-                                .map(Value::Char)
-                                .ok_or_else(|| "String is empty".to_string()),
-                            "empty" | "is_empty" => Ok(Value::Boolean(s.is_empty())),
-                            "upper" | "uppercase" => Ok(Value::String(s.to_uppercase())),
-                            "lower" | "lowercase" => Ok(Value::String(s.to_lowercase())),
-                            "trim" => Ok(Value::String(s.trim().to_string())),
-                            "trim_start" | "trim_left" => {
-                                Ok(Value::String(s.trim_start().to_string()))
-                            }
-                            "trim_end" | "trim_right" => {
-                                Ok(Value::String(s.trim_end().to_string()))
-                            }
-                            "lines" => {
-                                let lines: Vec<Value> =
-                                    s.lines().map(|l| Value::String(l.to_string())).collect();
-                                Ok(Value::List(lines))
-                            }
-                            "chars" => {
-                                let chars: Vec<Value> = s.chars().map(Value::Char).collect();
-                                Ok(Value::List(chars))
-                            }
-                            "split" => {
-                                Err("string.split() requires a separator argument - use string.split(sep)".to_string())
-                            }
-                            "contains" => {
-                                Err("string.contains() requires a substring argument - use string.contains(substr)".to_string())
-                            }
-                            "starts_with" | "startswith" => {
-                                Err(
-                                    "string.starts_with() requires a prefix argument".to_string()
-                                )
-                            }
-                            "ends_with" | "endswith" => {
-                                Err(
-                                    "string.ends_with() requires a suffix argument".to_string()
-                                )
-                            }
-                            "replace" => {
-                                Err("string.replace() requires old and new arguments - use string.replace(old, new)".to_string())
-                            }
-                            _ => Err(format!("String method '{}' not found", field)),
-                        }
-                    }
-                    Value::Counter(counter) => match field.as_str() {
-                        "most_common" => {
-                            let mut items: Vec<_> = counter.iter().collect();
-                            items.sort_by(|a, b| b.1.cmp(a.1));
-                            let result: Vec<Value> = items
-                                .iter()
-                                .map(|(k, v)| {
-                                    Value::Tuple(vec![
-                                        Value::String(k.to_string()),
-                                        Value::Integer(**v),
-                                    ])
-                                })
-                                .collect();
-                            Ok(Value::List(result))
-                        }
-                        "elements" | "keys" => {
-                            let keys: Vec<Value> =
-                                counter.keys().map(|k| Value::String(k.clone())).collect();
-                            Ok(Value::List(keys))
-                        }
-                        "total" => {
-                            let total: i64 = counter.values().sum();
-                            Ok(Value::Integer(total))
-                        }
-                        "len" | "length" | "size" => Ok(Value::Integer(counter.len() as i64)),
-                        _ => Err(format!("Counter method '{}' not found", field)),
-                    },
-                    Value::Interval(start, end) => {
-                        match field.as_str() {
-                            "start" => Ok(Value::Integer(start)),
-                            "end" => Ok(Value::Integer(end)),
-                            "len" | "length" | "size" => Ok(Value::Integer((end - start).abs())),
-                            "overlaps" => {
-                                // Returns a callable that checks if another interval overlaps
-                                Err(
-                                    "interval.overlaps() requires another interval argument"
-                                        .to_string(),
-                                )
-                            }
-                            "merge" => {
-                                Err("interval.merge() requires another interval argument"
-                                    .to_string())
-                            }
-                            "contains" => {
-                                Err(
-                                    "interval.contains() requires a value argument".to_string()
-                                )
-                            }
-                            _ => Err(format!("Interval method '{}' not found", field)),
-                        }
-                    }
-                    Value::Grid(grid) => {
-                        let rows = grid.len() as i64;
-                        let cols = if grid.is_empty() {
-                            0
-                        } else {
-                            grid[0].len() as i64
-                        };
-                        match field.as_str() {
-                            "rows" => Ok(Value::Integer(rows)),
-                            "cols" | "columns" => Ok(Value::Integer(cols)),
-                            "len" | "length" | "size" => Ok(Value::Integer(rows * cols)),
-                            "neighbors" => {
-                                Ok(Value::GridNeighbors(Box::new(Value::Grid(grid.clone()))))
-                            }
-                            _ => Err(format!("Grid method '{}' not found", field)),
-                        }
-                    }
-                    Value::Matrix(mat) => {
-                        // Use get_property for Matrix to get all the accessor methods
-                        self.get_property(&Value::Matrix(mat), field)
-                    }
-                    _ => Err(format!(
-                        "Cannot access field '{}' on type {}",
-                        field,
-                        match obj_val {
-                            Value::Integer(_) => "integer",
-                            Value::Float(_) => "float",
-                            Value::Boolean(_) => "boolean",
-                            Value::Char(_) => "char",
-                            Value::Function { .. } => "function",
-                            _ => "unknown",
-                        }
-                    )),
-                }
-            }
-
-            AstNode::Index { object, index } => {
-                let obj_val = self.eval_node(object)?;
-                let idx_val = self.eval_node(index)?;
-
-                match (obj_val, idx_val) {
-                    (
-                        Value::Enum {
-                            name: enum_name,
-                            variants,
-                        },
-                        val,
-                    ) => {
-                        // Reverse lookup: directions[1]
-                        for (key, variant_val) in variants.iter() {
-                            if variant_val == &val {
-                                return Ok(Value::EnumVariant {
-                                    enum_name: enum_name.clone(),
-                                    variant_name: key.clone(),
-                                    value: Box::new(variant_val.clone()),
-                                });
-                            }
-                        }
-                        Err(format!("Value '{}' not found in enum '{}'", val, enum_name))
-                    }
-                    (Value::List(list), Value::Integer(i)) => {
-                        // CRITICAL FIX: Proper negative index handling with bounds checking
-                        let idx = if i < 0 {
-                            let abs_i = i.unsigned_abs() as usize;
-                            if abs_i > list.len() {
-                                return Err(format!(
-                                    "Index {} out of bounds (length {})",
-                                    i,
-                                    list.len()
-                                ));
-                            }
-                            list.len() - abs_i
-                        } else {
-                            i as usize
-                        };
-
-                        if idx < list.len() {
-                            Ok(list[idx].clone())
-                        } else {
-                            Err(JError::index_out_of_bounds(i, list.len(), 0, 0).to_string())
-                        }
-                    }
-                    (Value::Grid(grid), Value::Integer(i)) => {
-                        // CRITICAL FIX: Proper negative index handling
-                        let idx = if i < 0 {
-                            let abs_i = i.unsigned_abs() as usize;
-                            if abs_i > grid.len() {
-                                return Err(format!(
-                                    "Grid row index {} out of bounds (rows {})",
-                                    i,
-                                    grid.len()
-                                ));
-                            }
-                            grid.len() - abs_i
-                        } else {
-                            i as usize
-                        };
-                        if idx < grid.len() {
-                            Ok(Value::List(grid[idx].clone()))
-                        } else {
-                            Err(format!(
-                                "Grid row index {} out of bounds (rows {})",
-                                i,
-                                grid.len()
-                            ))
-                        }
-                    }
-                    (Value::String(s), Value::Integer(i)) => {
-                        let chars: Vec<char> = s.chars().collect();
-                        // CRITICAL FIX: Proper negative index handling
-                        let idx = if i < 0 {
-                            let abs_i = i.unsigned_abs() as usize;
-                            if abs_i > chars.len() {
-                                return Err(format!(
-                                    "String index {} out of bounds (length {})",
-                                    i,
-                                    chars.len()
-                                ));
-                            }
-                            chars.len() - abs_i
-                        } else {
-                            i as usize
-                        };
-
-                        if idx < chars.len() {
-                            Ok(Value::Char(chars[idx]))
-                        } else {
-                            Err(format!(
-                                "String index {} out of bounds (length {})",
-                                i,
-                                chars.len()
-                            ))
-                        }
-                    }
-                    (Value::Dict(dict), Value::String(key)) => {
-                        if let Some(value) = dict.get(&key) {
-                            Ok(value.clone())
-                        } else {
-                            Err(JError::key_not_found(&key, 0, 0).to_string())
-                        }
-                    }
-                    (Value::Dict(dict), Value::Integer(i)) => {
-                        let key = i.to_string();
-                        if let Some(value) = dict.get(&key) {
-                            Ok(value.clone())
-                        } else {
-                            Err(JError::key_not_found(&key, 0, 0).to_string())
-                        }
-                    }
-                    (Value::Tuple(tuple), Value::Integer(i)) => {
-                        // CRITICAL FIX: Proper negative index handling
-                        let idx = if i < 0 {
-                            let abs_i = i.unsigned_abs() as usize;
-                            if abs_i > tuple.len() {
-                                return Err(format!(
-                                    "Tuple index {} out of bounds (length {})",
-                                    i,
-                                    tuple.len()
-                                ));
-                            }
-                            tuple.len() - abs_i
-                        } else {
-                            i as usize
-                        };
-
-                        if idx < tuple.len() {
-                            Ok(tuple[idx].clone())
-                        } else {
-                            Err(format!(
-                                "Tuple index {} out of bounds (length {})",
-                                i,
-                                tuple.len()
-                            ))
-                        }
-                    }
-                    (obj, idx) => Err(format!(
-                        "Cannot index {} with {}",
-                        match obj {
-                            Value::Integer(_) => "integer",
-                            Value::Float(_) => "float",
-                            Value::Boolean(_) => "boolean",
-                            Value::Char(_) => "char",
-                            Value::Function { .. } => "function",
-                            Value::Infinity(_) => "infinity",
-                            Value::Emoji(_) => "emoji",
-                            Value::Money(_, _) => "money",
-                            Value::Hex(_) => "hex",
-                            Value::Date(_) => "date",
-                            Value::Time(_) => "time",
-                            Value::DateTime(_) => "datetime",
-                            Value::Range(_, _, _) => "range",
-                            Value::Task(_) => "task",
-                            Value::Channel(_) => "channel",
-                            Value::None => "none",
-                            _ => "unknown",
-                        },
-                        match idx {
-                            Value::Integer(_) => "integer",
-                            Value::String(_) => "string",
-                            _ => "invalid index type",
-                        }
-                    )),
-                }
-            }
-
-            AstNode::Slice {
-                object,
-                start,
-                end,
-                step,
-            } => {
-                let obj_val = self.eval_node(object)?;
-
-                // Evaluate slice parameters
-                let start_idx = if let Some(start_node) = start {
-                    match self.eval_node(start_node)? {
-                        Value::Integer(i) => Some(i),
-                        _ => return Err("Slice start must be an integer".to_string()),
-                    }
-                } else {
-                    None
-                };
-
-                let end_idx = if let Some(end_node) = end {
-                    match self.eval_node(end_node)? {
-                        Value::Integer(i) => Some(i),
-                        _ => return Err("Slice end must be an integer".to_string()),
-                    }
-                } else {
-                    None
-                };
-
-                let step_val = if let Some(step_node) = step {
-                    match self.eval_node(step_node)? {
-                        Value::Integer(i) => {
-                            if i == 0 {
-                                return Err("Slice step cannot be zero".to_string());
-                            }
-                            i
-                        }
-                        _ => return Err("Slice step must be an integer".to_string()),
-                    }
-                } else {
-                    1
-                };
-
-                match obj_val {
-                    Value::List(list) => {
-                        let len = list.len() as i64;
-                        let (start, end) =
-                            self.normalize_slice_indices(start_idx, end_idx, len, step_val)?;
-
-                        let mut result = Vec::new();
-                        if step_val > 0 {
-                            let mut i = start;
-                            while i < end && i < len {
-                                if i >= 0 {
-                                    result.push(list[i as usize].clone());
-                                }
-                                i += step_val;
-                            }
-                        } else {
-                            let mut i = start;
-                            while i > end && i >= 0 {
-                                if i < len {
-                                    result.push(list[i as usize].clone());
-                                }
-                                i += step_val; // step_val is negative
-                            }
-                        }
-                        Ok(Value::List(result))
-                    }
-                    Value::String(s) => {
-                        let chars: Vec<char> = s.chars().collect();
-                        let len = chars.len() as i64;
-                        let (start, end) =
-                            self.normalize_slice_indices(start_idx, end_idx, len, step_val)?;
-
-                        let mut result_chars = Vec::new();
-                        if step_val > 0 {
-                            let mut i = start;
-                            while i < end && i < len {
-                                if i >= 0 {
-                                    result_chars.push(chars[i as usize]);
-                                }
-                                i += step_val;
-                            }
-                        } else {
-                            let mut i = start;
-                            while i > end && i >= 0 {
-                                if i < len {
-                                    result_chars.push(chars[i as usize]);
-                                }
-                                i += step_val; // step_val is negative
-                            }
-                        }
-                        let result_string: String = result_chars.into_iter().collect();
-                        Ok(Value::String(result_string))
-                    }
-                    Value::Vector(vec) => {
-                        let len = vec.len() as i64;
-                        let (start, end) =
-                            self.normalize_slice_indices(start_idx, end_idx, len, step_val)?;
-
-                        let mut result = Vec::new();
-                        if step_val > 0 {
-                            let mut i = start;
-                            while i < end && i < len {
-                                if i >= 0 {
-                                    result.push(vec[i as usize]);
-                                }
-                                i += step_val;
-                            }
-                        } else {
-                            let mut i = start;
-                            while i > end && i >= 0 {
-                                if i < len {
-                                    result.push(vec[i as usize]);
-                                }
-                                i += step_val; // step_val is negative
-                            }
-                        }
-                        Ok(Value::Vector(result))
-                    }
-                    _ => Err("Cannot slice this type".to_string()),
-                }
-            }
-
-            AstNode::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let cond_val = self.eval_node(condition)?;
-                if self.is_truthy(&cond_val) {
-                    self.eval_node(then_branch)
-                } else if let Some(else_node) = else_branch {
-                    self.eval_node(else_node)
-                } else {
-                    Ok(Value::None)
-                }
-            }
-
-            AstNode::Match { expr, arms } => {
-                let expr_val = self.eval_node(expr)?;
-
-                for arm in arms {
-                    if self.pattern_matches(&arm.pattern, &expr_val)? {
-                        if let Some(guard) = &arm.guard {
-                            let guard_val = self.eval_node(guard)?;
-                            if !self.is_truthy(&guard_val) {
-                                continue;
-                            }
-                        }
-                        return self.eval_node(&arm.body);
-                    }
-                }
-
-                Err("No matching pattern found".to_string())
-            }
-
-            AstNode::Cond { value, branches } => {
-                // Evaluate the value once
-                let cond_value = self.eval_node(value)?;
-
-                // Store the value in a special variable '_' for use in conditions
-                self.set_variable("_".to_string(), cond_value.clone());
-
-                // Iterate through branches and find the first matching condition
-                for branch in branches {
-                    if branch.is_else {
-                        // else branch always matches
-                        return self.eval_node(&branch.body);
-                    }
-
-                    // Evaluate the condition
-                    let condition_result = self.eval_node(&branch.condition)?;
-
-                    // Check if condition is truthy
-                    if self.is_truthy(&condition_result) {
-                        return self.eval_node(&branch.body);
-                    }
-                }
-
-                // If no branch matched and no else, return None
-                Ok(Value::None)
-            }
-
-            AstNode::While { condition, body } => {
-                let mut last_val = Value::None;
-
-                loop {
-                    let cond_result = self.eval_node(condition)?;
-                    if !self.is_truthy(&cond_result) {
-                        break;
-                    }
-
-                    match self.eval_node(body) {
-                        Ok(val) => last_val = val,
-                        Err(e) if e == "Break statement outside of loop" => break,
-                        Err(e) if e == "Continue statement outside of loop" => continue,
-                        Err(e) => return Err(e),
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::TryCatch {
-                try_block,
-                catch_var,
-                catch_block,
-                finally_block,
-            } => {
-                // Execute try block
-                let result = self.eval_node(try_block);
-
-                // If error occurred, execute catch block
-                let final_result = match result {
-                    Err(error_msg) => {
-                        // Set error variable if specified
-                        if let Some(var_name) = catch_var {
-                            self.set_variable(var_name.clone(), Value::String(error_msg));
-                        }
-
-                        // Execute catch block
-                        self.eval_node(catch_block)?
-                    }
-                    Ok(val) => val,
-                };
-
-                // Execute finally block if present
-                if let Some(finally) = finally_block {
-                    self.eval_node(finally)?;
-                }
-
-                Ok(final_result)
-            }
-
-            AstNode::Throw(expr) => {
-                let error_val = self.eval_node(expr)?;
-                let error_msg = match error_val {
-                    Value::String(s) => s,
-                    other => format!("{}", other),
-                };
-                Err(error_msg)
-            }
-
-            AstNode::For {
-                var,
-                iterable,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for item in list {
-                            self.set_variable(var.clone(), item);
-                            match self.eval_node(body) {
-                                Ok(val) => last_val = val,
-                                Err(e) if e == "Break statement outside of loop" => break,
-                                Err(e) if e == "Continue statement outside of loop" => continue,
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                    Value::String(s) => {
-                        for ch in s.chars() {
-                            self.set_variable(var.clone(), Value::Char(ch));
-                            match self.eval_node(body) {
-                                Ok(val) => last_val = val,
-                                Err(e) if e == "Break statement outside of loop" => break,
-                                Err(e) if e == "Continue statement outside of loop" => continue,
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                    Value::Dict(dict) => {
-                        for (key, _value) in dict {
-                            // For simple iteration, iterate over keys
-                            self.set_variable(var.clone(), Value::String(key));
-                            match self.eval_node(body) {
-                                Ok(val) => last_val = val,
-                                Err(e) if e == "Break statement outside of loop" => break,
-                                Err(e) if e == "Continue statement outside of loop" => continue,
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                    Value::Tuple(tuple) => {
-                        for item in tuple {
-                            self.set_variable(var.clone(), item);
-                            match self.eval_node(body) {
-                                Ok(val) => last_val = val,
-                                Err(e) if e == "Break statement outside of loop" => break,
-                                Err(e) if e == "Continue statement outside of loop" => continue,
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                    Value::Vector(vec) => {
-                        for item in vec {
-                            self.set_variable(var.clone(), Value::Float(item));
-                            match self.eval_node(body) {
-                                Ok(val) => last_val = val,
-                                Err(e) if e == "Break statement outside of loop" => break,
-                                Err(e) if e == "Continue statement outside of loop" => continue,
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                    _ => return Err(
-                        "Can only iterate over lists, strings, dictionaries, tuples, and vectors"
-                            .to_string(),
-                    ),
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForReverse {
-                var,
-                iterable,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(mut list) => {
-                        list.reverse();
-                        for item in list {
-                            self.set_variable(var.clone(), item);
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::String(s) => {
-                        let chars: Vec<char> = s.chars().rev().collect();
-                        for ch in chars {
-                            self.set_variable(var.clone(), Value::Char(ch));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::Vector(mut vec) => {
-                        vec.reverse();
-                        for item in vec {
-                            self.set_variable(var.clone(), Value::Float(item));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "Can only reverse iterate over lists, strings, and vectors".to_string()
-                        )
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForStep {
-                var,
-                start,
-                step,
-                condition,
-                body,
-            } => {
-                let start_val = self.eval_node(start)?;
-                let step_val = self.eval_node(step)?;
-                let mut last_val = Value::None;
-
-                match (start_val, step_val) {
-                    (Value::Integer(s), Value::Integer(st)) => {
-                        if st == 0 {
-                            return Err("Step cannot be zero".to_string());
-                        }
-
-                        let mut current = s;
-                        loop {
-                            // Check condition if provided
-                            if let Some(cond) = condition {
-                                self.set_variable(var.clone(), Value::Integer(current));
-                                let cond_result = self.eval_node(cond)?;
-                                if !self.is_truthy(&cond_result) {
-                                    break;
-                                }
-                            }
-
-                            self.set_variable(var.clone(), Value::Integer(current));
-                            last_val = self.eval_node(body)?;
-                            current += st;
-
-                            // Simple overflow protection
-                            if current.abs() > 1_000_000 {
-                                break;
-                            }
-                        }
-                    }
-                    _ => return Err("ForStep requires integer start and step values".to_string()),
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForIndexed {
-                index_var,
-                value_var,
-                iterable,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for (index, item) in list.iter().enumerate() {
-                            self.set_variable(index_var.clone(), Value::Integer(index as i64));
-                            self.set_variable(value_var.clone(), item.clone());
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::String(s) => {
-                        for (index, ch) in s.chars().enumerate() {
-                            self.set_variable(index_var.clone(), Value::Integer(index as i64));
-                            self.set_variable(value_var.clone(), Value::Char(ch));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::Dict(dict) => {
-                        for (index, (key, _value)) in dict.iter().enumerate() {
-                            self.set_variable(index_var.clone(), Value::Integer(index as i64));
-                            self.set_variable(value_var.clone(), Value::String(key.clone()));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::Tuple(tuple) => {
-                        for (index, item) in tuple.iter().enumerate() {
-                            self.set_variable(index_var.clone(), Value::Integer(index as i64));
-                            self.set_variable(value_var.clone(), item.clone());
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::Vector(vec) => {
-                        for (index, item) in vec.iter().enumerate() {
-                            self.set_variable(index_var.clone(), Value::Integer(index as i64));
-                            self.set_variable(value_var.clone(), Value::Float(*item));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    _ => return Err(
-                        "Can only iterate over lists, strings, dictionaries, tuples, and vectors"
-                            .to_string(),
-                    ),
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForZip {
-                vars,
-                iterables,
-                body,
-            } => {
-                if vars.len() != iterables.len() {
-                    return Err(
-                        "Number of variables must match number of iterables in zip".to_string()
-                    );
-                }
-
-                // Evaluate all iterables
-                let mut evaluated_iterables = Vec::new();
-                for iterable in iterables {
-                    evaluated_iterables.push(self.eval_node(iterable)?);
-                }
-
-                // Convert to lists for zipping
-                let mut lists = Vec::new();
-                for iterable_val in evaluated_iterables {
-                    match iterable_val {
-                        Value::List(list) => lists.push(list),
-                        Value::String(s) => {
-                            let chars: Vec<Value> = s.chars().map(Value::Char).collect();
-                            lists.push(chars);
-                        }
-                        Value::Vector(vec) => {
-                            let floats: Vec<Value> = vec.iter().map(|&f| Value::Float(f)).collect();
-                            lists.push(floats);
-                        }
-                        Value::Tuple(tuple) => lists.push(tuple),
-                        _ => {
-                            return Err(
-                                "Can only zip over lists, strings, vectors, and tuples".to_string()
-                            )
-                        }
-                    }
-                }
-
-                // Find minimum length
-                let min_len = lists.iter().map(|l| l.len()).min().unwrap_or(0);
-
-                let mut last_val = Value::None;
-                for i in 0..min_len {
-                    // Set each variable to the corresponding element
-                    for (var_idx, var_name) in vars.iter().enumerate() {
-                        if var_idx < lists.len() {
-                            self.set_variable(var_name.clone(), lists[var_idx][i].clone());
-                        }
-                    }
-                    last_val = self.eval_node(body)?;
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForParallel {
-                var,
-                iterable,
-                body,
-                workers: _,
-                ordered: _,
-            } => {
-                // For now, implement as sequential (true parallel would require threading)
-                // This is a placeholder for future parallel execution
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for item in list {
-                            self.set_variable(var.clone(), item);
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::String(s) => {
-                        for ch in s.chars() {
-                            self.set_variable(var.clone(), Value::Char(ch));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::Vector(vec) => {
-                        for item in vec {
-                            self.set_variable(var.clone(), Value::Float(item));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    _ => {
-                        return Err("Can only parallel iterate over lists, strings, and vectors"
-                            .to_string())
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            // Enhanced for loop variants
-            AstNode::ForChunked {
-                var,
-                iterable,
-                chunk_size,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let chunk_size_val = self.eval_node(chunk_size)?;
-                let mut last_val = Value::None;
-
-                let chunk_size = match chunk_size_val {
-                    Value::Integer(size) => {
-                        if size <= 0 {
-                            return Err("Chunk size must be positive".to_string());
-                        }
-                        size as usize
-                    }
-                    _ => return Err("Chunk size must be an integer".to_string()),
-                };
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for chunk in list.chunks(chunk_size) {
-                            self.set_variable(var.clone(), Value::List(chunk.to_vec()));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    Value::String(s) => {
-                        let chars: Vec<char> = s.chars().collect();
-                        for chunk in chars.chunks(chunk_size) {
-                            let chunk_chars: Vec<Value> =
-                                chunk.iter().map(|&c| Value::Char(c)).collect();
-                            self.set_variable(var.clone(), Value::List(chunk_chars));
-                            last_val = self.eval_node(body)?;
-                        }
-                    }
-                    _ => {
-                        return Err("ForChunked can only iterate over lists and strings".to_string())
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForFiltered {
-                var,
-                iterable,
-                filter,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for item in list {
-                            self.set_variable(var.clone(), item.clone());
-
-                            // Evaluate filter condition
-                            let filter_result = self.eval_node(filter)?;
-                            if self.is_truthy(&filter_result) {
-                                last_val = self.eval_node(body)?;
-                            }
-                        }
-                    }
-                    Value::String(s) => {
-                        for ch in s.chars() {
-                            self.set_variable(var.clone(), Value::Char(ch));
-
-                            let filter_result = self.eval_node(filter)?;
-                            if self.is_truthy(&filter_result) {
-                                last_val = self.eval_node(body)?;
-                            }
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "ForFiltered can only iterate over lists and strings".to_string()
-                        )
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ForWindowed {
-                var,
-                iterable,
-                window_size,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let window_size_val = self.eval_node(window_size)?;
-                let mut last_val = Value::None;
-
-                let window_size = match window_size_val {
-                    Value::Integer(size) => {
-                        if size <= 0 {
-                            return Err("Window size must be positive".to_string());
-                        }
-                        size as usize
-                    }
-                    _ => return Err("Window size must be an integer".to_string()),
-                };
-
-                match iterable_val {
-                    Value::List(list) => {
-                        if list.len() >= window_size {
-                            for i in 0..=(list.len() - window_size) {
-                                let window: Vec<Value> = list[i..i + window_size].to_vec();
-                                self.set_variable(var.clone(), Value::List(window));
-                                last_val = self.eval_node(body)?;
-                            }
-                        }
-                    }
-                    Value::String(s) => {
-                        let chars: Vec<char> = s.chars().collect();
-                        if chars.len() >= window_size {
-                            for i in 0..=(chars.len() - window_size) {
-                                let window: Vec<Value> = chars[i..i + window_size]
-                                    .iter()
-                                    .map(|&c| Value::Char(c))
-                                    .collect();
-                                self.set_variable(var.clone(), Value::List(window));
-                                last_val = self.eval_node(body)?;
-                            }
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "ForWindowed can only iterate over lists and strings".to_string()
-                        )
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            // Advanced algorithm loops
-            AstNode::SweepLoop {
-                left_var,
-                right_var,
-                iterable,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        let mut left = 0i64;
-                        let mut right = 0i64;
-
-                        // Initialize variables
-                        self.set_variable(left_var.clone(), Value::Integer(left));
-                        self.set_variable(right_var.clone(), Value::Integer(right));
-
-                        // User controls the loop via break/continue
-                        loop {
-                            // Check bounds
-                            if right >= list.len() as i64 {
-                                break;
-                            }
-
-                            // Update variables before body execution
-                            self.set_variable(left_var.clone(), Value::Integer(left));
-                            self.set_variable(right_var.clone(), Value::Integer(right));
-
-                            // Execute body - user must update left/right
-                            last_val = self.eval_node(body)?;
-
-                            // Read updated values
-                            left = match self.get_variable(left_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Sweep left variable must be an integer".to_string())
-                                }
-                            };
-                            right = match self.get_variable(right_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err(
-                                        "Sweep right variable must be an integer".to_string()
-                                    )
-                                }
-                            };
-
-                            // Safety check to prevent infinite loops
-                            if left < 0
-                                || right < 0
-                                || left > list.len() as i64
-                                || right > list.len() as i64
-                            {
-                                break;
-                            }
-                        }
-                    }
-                    _ => return Err("Sweep loop requires a list".to_string()),
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::ShrinkLoop {
-                left_var,
-                right_var,
-                iterable,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        let mut left = 0i64;
-                        let mut right = (list.len() as i64) - 1;
-
-                        while left <= right {
-                            self.set_variable(left_var.clone(), Value::Integer(left));
-                            self.set_variable(right_var.clone(), Value::Integer(right));
-
-                            last_val = self.eval_node(body)?;
-
-                            // Read updated values
-                            left = match self.get_variable(left_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err(
-                                        "Shrink left variable must be an integer".to_string()
-                                    )
-                                }
-                            };
-                            right = match self.get_variable(right_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err(
-                                        "Shrink right variable must be an integer".to_string()
-                                    )
-                                }
-                            };
-                        }
-                    }
-                    _ => return Err("Shrink loop requires a list".to_string()),
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::MeetLoop {
-                left_var,
-                right_var,
-                iterable,
-                body,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut last_val = Value::None;
-
-                match iterable_val {
-                    Value::List(list) => {
-                        let mut left = 0i64;
-                        let mut right = (list.len() as i64) - 1;
-
-                        while left < right {
-                            self.set_variable(left_var.clone(), Value::Integer(left));
-                            self.set_variable(right_var.clone(), Value::Integer(right));
-
-                            last_val = self.eval_node(body)?;
-
-                            // Read updated values
-                            left = match self.get_variable(left_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Meet left variable must be an integer".to_string())
-                                }
-                            };
-                            right = match self.get_variable(right_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Meet right variable must be an integer".to_string())
-                                }
-                            };
-                        }
-                    }
-                    _ => return Err("Meet loop requires a list".to_string()),
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::BinarySearchLoop {
-                lo_var,
-                hi_var,
-                range,
-                body,
-                else_block,
-            } => {
-                let range_val = self.eval_node(range)?;
-                let mut last_val = Value::None;
-                let mut found = false;
-
-                match range_val {
-                    Value::List(list) => {
-                        let mut lo = 0i64;
-                        let mut hi = (list.len() as i64) - 1;
-
-                        while lo <= hi {
-                            self.set_variable(lo_var.clone(), Value::Integer(lo));
-                            self.set_variable(hi_var.clone(), Value::Integer(hi));
-
-                            last_val = self.eval_node(body)?;
-
-                            // Check if user signaled a match (by setting a special variable or breaking)
-                            // For now, user must update lo/hi to continue search
-                            let new_lo = match self.get_variable(lo_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Binary lo variable must be an integer".to_string())
-                                }
-                            };
-                            let new_hi = match self.get_variable(hi_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Binary hi variable must be an integer".to_string())
-                                }
-                            };
-
-                            // If lo and hi didn't change, assume found
-                            if new_lo == lo && new_hi == hi {
-                                found = true;
-                                break;
-                            }
-
-                            lo = new_lo;
-                            hi = new_hi;
-                        }
-                    }
-                    Value::Range(start, end, _step) => {
-                        let mut lo = start;
-                        let mut hi = end - 1;
-
-                        while lo <= hi {
-                            self.set_variable(lo_var.clone(), Value::Integer(lo));
-                            self.set_variable(hi_var.clone(), Value::Integer(hi));
-
-                            last_val = self.eval_node(body)?;
-
-                            let new_lo = match self.get_variable(lo_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Binary lo variable must be an integer".to_string())
-                                }
-                            };
-                            let new_hi = match self.get_variable(hi_var)? {
-                                Value::Integer(i) => i,
-                                _ => {
-                                    return Err("Binary hi variable must be an integer".to_string())
-                                }
-                            };
-
-                            if new_lo == lo && new_hi == hi {
-                                found = true;
-                                break;
-                            }
-
-                            lo = new_lo;
-                            hi = new_hi;
-                        }
-                    }
-                    _ => return Err("Binary search loop requires a list or range".to_string()),
-                }
-
-                // Execute else block if not found
-                if !found {
-                    if let Some(else_node) = else_block.as_ref() {
-                        last_val = self.eval_node(else_node)?;
-                    }
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::DpLoop {
-                table_name,
-                dimensions,
-                init_value,
-                body,
-            } => {
-                // Evaluate dimensions
-                let mut dim_sizes = Vec::new();
-                for dim in dimensions {
-                    match self.eval_node(dim)? {
-                        Value::Integer(size) => {
-                            if size <= 0 {
-                                return Err("DP dimension must be positive".to_string());
-                            }
-                            dim_sizes.push(size as usize);
-                        }
-                        _ => return Err("DP dimensions must be integers".to_string()),
-                    }
-                }
-
-                // Initialize table based on dimensions
-                let init_val = self.eval_node(init_value)?;
-
-                if dim_sizes.len() == 1 {
-                    // 1D table
-                    let table = vec![init_val.clone(); dim_sizes[0]];
-                    self.set_variable(table_name.clone(), Value::List(table));
-                } else if dim_sizes.len() == 2 {
-                    // 2D table
-                    let mut table = Vec::new();
-                    for _ in 0..dim_sizes[0] {
-                        let row = vec![init_val.clone(); dim_sizes[1]];
-                        table.push(Value::List(row));
-                    }
-                    self.set_variable(table_name.clone(), Value::List(table));
-                } else {
-                    return Err("DP loop currently supports 1D and 2D tables".to_string());
-                }
-
-                // Execute body
-                let last_val = self.eval_node(body)?;
-
-                Ok(last_val)
-            }
-
-            AstNode::WhileNonzero { var, body } => {
-                let mut last_val = Value::None;
-
-                loop {
-                    let var_val = self.get_variable(var)?;
-
-                    match var_val {
-                        Value::Integer(n) => {
-                            if n == 0 {
-                                break;
-                            }
-                        }
-                        _ => return Err("while_nonzero requires an integer variable".to_string()),
-                    }
-
-                    last_val = self.eval_node(body)?;
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::WhileChange { var, init, body } => {
-                let init_val = self.eval_node(init)?;
-                self.set_variable(var.clone(), init_val.clone());
-
-                // Execute body at least once, then continue while the value changes
-                let mut last_val = self.eval_node(body)?;
-                let mut prev_val = self.get_variable(var)?;
-
-                loop {
-                    if prev_val == self.get_variable(var)? {
-                        break;
-                    }
-
-                    prev_val = self.get_variable(var)?;
-                    last_val = self.eval_node(body)?;
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::WhileMatchLoop { var, body } => {
-                // This is a pattern-matching while loop
-                // For now, implement as a simple while loop that continues until var is None
-                let mut last_val = Value::None;
-
-                loop {
-                    let var_val = self.get_variable(var)?;
-
-                    if matches!(var_val, Value::None) {
-                        break;
-                    }
-
-                    last_val = self.eval_node(body)?;
-                }
-
-                Ok(last_val)
-            }
-
-            AstNode::Range {
-                start,
-                end,
-                inclusive,
-                step,
-            } => {
-                let start_val = self.eval_node(start)?;
-                let end_val = self.eval_node(end)?;
-
-                match (start_val, end_val) {
-                    (Value::Integer(s), Value::Integer(e)) => {
-                        let mut range = Vec::new();
-                        let step_val = if let Some(step_node) = step {
-                            match self.eval_node(step_node)? {
-                                Value::Integer(step) => step,
-                                _ => return Err("Range step must be an integer".to_string()),
-                            }
-                        } else {
-                            1
-                        };
-
-                        if step_val == 0 {
-                            return Err("Range step cannot be zero".to_string());
-                        }
-
-                        let mut current = s;
-                        if step_val > 0 {
-                            while current < e || (*inclusive && current == e) {
-                                range.push(Value::Integer(current));
-                                current += step_val;
-                            }
-                        } else {
-                            while current > e || (*inclusive && current == e) {
-                                range.push(Value::Integer(current));
-                                current += step_val;
-                            }
-                        }
-
-                        Ok(Value::List(range))
-                    }
-                    _ => Err("Range bounds must be integers".to_string()),
-                }
-            }
-
-            AstNode::Block(statements) => {
-                // CRITICAL FIX: Blocks now create their own scope
-                self.push_scope();
-                self.defer_stack.push(Vec::new());
-
-                // Execute statements and capture result or error
-                let result = (|| {
-                    let mut last_val = Value::None;
-                    for stmt in statements {
-                        if let AstNode::Defer(expr) = stmt {
-                            if let Some(defer_vec) = self.defer_stack.last_mut() {
-                                defer_vec.push((*expr.clone(), None));
-                            }
-                        } else {
-                            last_val = self.eval_node(stmt)?;
-                        }
-                    }
-                    Ok(last_val)
-                })();
-
-                // CRITICAL: Always execute defers, even on error
-                let defers = self.defer_stack.pop().unwrap_or_default();
-                for (expr, value_for_underscore) in defers.into_iter().rev() {
-                    if let Some(v) = value_for_underscore {
-                        self.set_variable("_".to_string(), v);
-                    }
-                    // Ignore defer errors to allow cleanup to continue
-                    let _ = self.eval_node(&expr);
-                }
-
-                // CRITICAL: Always pop scope, even on error
-                self.pop_scope();
-
-                // Propagate the original result or error
-                result
-            }
-
-            AstNode::Defer(_) => Ok(Value::None),
-
-            AstNode::ConvergeLoop { body } => {
-                let mut prev = Value::None;
-                loop {
-                    self.push_scope();
-                    self.set_variable("_".to_string(), prev.clone());
-                    let next = self.eval_node(body)?;
-                    self.pop_scope();
-                    if prev == next {
-                        break Ok(next);
-                    }
-                    prev = next;
-                }
-            }
-
-            AstNode::Expression(expr) => self.eval_node(expr),
-
-            AstNode::Assignment { name, value } => {
-                let val = self.eval_node(value)?;
-
-                // Use assign_variable to properly update existing variables
-                self.assign_variable(name, val.clone())?;
-
-                Ok(val)
-            }
-
-            AstNode::DestructuringAssignment { targets, value } => {
-                let val = self.eval_node(value)?;
-
-                match val {
-                    Value::Tuple(tuple) => {
-                        if targets.len() != tuple.len() {
-                            return Err(format!(
-                                "Cannot destructure tuple of length {} into {} variables",
-                                tuple.len(),
-                                targets.len()
-                            ));
-                        }
-
-                        for (target, value) in targets.iter().zip(tuple.iter()) {
-                            self.set_variable(target.clone(), value.clone());
-                        }
-
-                        Ok(Value::Tuple(tuple))
-                    }
-                    Value::List(list) => {
-                        if targets.len() > list.len() {
-                            return Err(format!(
-                                "Cannot destructure list of length {} into {} variables",
-                                list.len(),
-                                targets.len()
-                            ));
-                        }
-
-                        for (i, target) in targets.iter().enumerate() {
-                            if i < list.len() {
-                                self.set_variable(target.clone(), list[i].clone());
-                            } else {
-                                self.set_variable(target.clone(), Value::None);
-                            }
-                        }
-
-                        Ok(Value::List(list))
-                    }
-                    _ => Err("Can only destructure tuples and lists".to_string()),
-                }
-            }
-
-            AstNode::Return(expr) => {
-                if let Some(expr) = expr {
-                    self.eval_node(expr)
-                } else {
-                    Ok(Value::None)
-                }
-            }
-
-            AstNode::TryExpression(expr) => {
-                // For now, just evaluate the expression
-                // In a full implementation, this would handle Result types
-                self.eval_node(expr)
-            }
-
-            AstNode::ExecuteFile { filename } => {
-                // Execute another J file
-                self.execute_file(filename)
-            }
-
-            AstNode::Lambda { params, body } => Ok(Value::Function {
-                name: "<lambda>".to_string(),
-                params: params.clone(),
-                body: body.clone(),
-            }),
-
-            AstNode::ListComprehension {
-                expr,
-                var,
-                iterable,
-                condition,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut result = Vec::new();
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for item in list {
-                            self.set_variable(var.clone(), item);
-
-                            // Check condition if provided
-                            if let Some(cond) = condition {
-                                let cond_result = self.eval_node(cond)?;
-                                if !self.is_truthy(&cond_result) {
-                                    continue;
-                                }
-                            }
-
-                            let expr_result = self.eval_node(expr)?;
-                            result.push(expr_result);
-                        }
-                    }
-                    Value::String(s) => {
-                        for ch in s.chars() {
-                            self.set_variable(var.clone(), Value::Char(ch));
-
-                            if let Some(cond) = condition {
-                                let cond_result = self.eval_node(cond)?;
-                                if !self.is_truthy(&cond_result) {
-                                    continue;
-                                }
-                            }
-
-                            let expr_result = self.eval_node(expr)?;
-                            result.push(expr_result);
-                        }
-                    }
-                    Value::Vector(vec) => {
-                        for item in vec {
-                            self.set_variable(var.clone(), Value::Float(item));
-
-                            if let Some(cond) = condition {
-                                let cond_result = self.eval_node(cond)?;
-                                if !self.is_truthy(&cond_result) {
-                                    continue;
-                                }
-                            }
-
-                            let expr_result = self.eval_node(expr)?;
-                            result.push(expr_result);
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "List comprehension can only iterate over lists, strings, and vectors"
-                                .to_string(),
-                        )
-                    }
-                }
-
-                Ok(Value::List(result))
-            }
-
-            AstNode::DictComprehension {
-                key_expr,
-                value_expr,
-                var,
-                iterable,
-                condition,
-            } => {
-                let iterable_val = self.eval_node(iterable)?;
-                let mut result = HashMap::new();
-
-                match iterable_val {
-                    Value::List(list) => {
-                        for item in list {
-                            self.set_variable(var.clone(), item);
-
-                            // Check condition if provided
-                            if let Some(cond) = condition {
-                                let cond_result = self.eval_node(cond)?;
-                                if !self.is_truthy(&cond_result) {
-                                    continue;
-                                }
-                            }
-
-                            let key_result = self.eval_node(key_expr)?;
-                            let value_result = self.eval_node(value_expr)?;
-
-                            let key =
-                                match key_result {
-                                    Value::String(s) => s,
-                                    Value::Integer(i) => i.to_string(),
-                                    _ => return Err(
-                                        "Dictionary comprehension keys must be strings or integers"
-                                            .to_string(),
-                                    ),
-                                };
-
-                            result.insert(key, value_result);
-                        }
-                    }
-                    Value::String(s) => {
-                        for ch in s.chars() {
-                            self.set_variable(var.clone(), Value::Char(ch));
-
-                            if let Some(cond) = condition {
-                                let cond_result = self.eval_node(cond)?;
-                                if !self.is_truthy(&cond_result) {
-                                    continue;
-                                }
-                            }
-
-                            let key_result = self.eval_node(key_expr)?;
-                            let value_result = self.eval_node(value_expr)?;
-
-                            let key =
-                                match key_result {
-                                    Value::String(s) => s,
-                                    Value::Integer(i) => i.to_string(),
-                                    _ => return Err(
-                                        "Dictionary comprehension keys must be strings or integers"
-                                            .to_string(),
-                                    ),
-                                };
-
-                            result.insert(key, value_result);
-                        }
-                    }
-                    _ => {
-                        return Err(
-                            "Dictionary comprehension can only iterate over lists and strings"
-                                .to_string(),
-                        )
-                    }
-                }
-
-                Ok(Value::Dict(result))
-            }
-
-            // Missing AST node patterns
-            AstNode::TypeConversion { target_type, name } => {
-                // Type conversion: type*variable
-                let current_value = self.get_variable(name)?;
-
-                let converted_value = match target_type.as_str() {
-                    "str" => match current_value {
-                        Value::Integer(i) => Value::String(i.to_string()),
-                        Value::Float(f) => Value::String(f.to_string()),
-                        Value::Boolean(b) => Value::String(b.to_string()),
-                        Value::Char(c) => Value::String(c.to_string()),
-                        Value::String(s) => Value::String(s),
-                        _ => Value::String(current_value.to_string()),
-                    },
-                    "int" => match current_value {
-                        Value::Integer(i) => Value::Integer(i),
-                        Value::Float(f) => Value::Integer(f as i64),
-                        Value::String(s) => s
-                            .parse::<i64>()
-                            .map(Value::Integer)
-                            .unwrap_or(Value::Integer(0)),
-                        Value::Boolean(b) => Value::Integer(if b { 1 } else { 0 }),
-                        _ => Value::Integer(0),
-                    },
-                    "float" => match current_value {
-                        Value::Integer(i) => Value::Float(i as f64),
-                        Value::Float(f) => Value::Float(f),
-                        Value::String(s) => s
-                            .parse::<f64>()
-                            .map(Value::Float)
-                            .unwrap_or(Value::Float(0.0)),
-                        Value::Boolean(b) => Value::Float(if b { 1.0 } else { 0.0 }),
-                        _ => Value::Float(0.0),
-                    },
-                    "bool" => match current_value {
-                        Value::Boolean(b) => Value::Boolean(b),
-                        Value::Integer(i) => Value::Boolean(i != 0),
-                        Value::Float(f) => Value::Boolean(f != 0.0),
-                        Value::String(s) => Value::Boolean(!s.is_empty()),
-                        Value::List(l) => Value::Boolean(!l.is_empty()),
-                        _ => Value::Boolean(true),
-                    },
-                    "list" => match current_value {
-                        Value::List(l) => Value::List(l),
-                        Value::String(s) => {
-                            let chars: Vec<Value> = s.chars().map(Value::Char).collect();
-                            Value::List(chars)
-                        }
-                        Value::Vector(v) => {
-                            let floats: Vec<Value> = v.iter().map(|&f| Value::Float(f)).collect();
-                            Value::List(floats)
-                        }
-                        Value::Tuple(t) => Value::List(t),
-                        _ => Value::List(vec![current_value]),
-                    },
-                    "vec" => match current_value {
-                        Value::Vector(v) => Value::Vector(v),
-                        Value::List(l) => {
-                            let mut vec = Vec::new();
-                            for item in l {
-                                match item {
-                                    Value::Integer(i) => vec.push(i as f64),
-                                    Value::Float(f) => vec.push(f),
-                                    _ => {
-                                        return Err(
-                                            "Cannot convert non-numeric list to vector".to_string()
-                                        )
-                                    }
-                                }
-                            }
-                            Value::Vector(vec)
-                        }
-                        _ => return Err(format!("Cannot convert {} to vector", target_type)),
-                    },
-                    _ => return Err(format!("Unsupported type conversion to {}", target_type)),
-                };
-
-                // Create new variable with converted value (shadowing)
-                self.set_variable(name.clone(), converted_value.clone());
-                Ok(converted_value)
-            }
-
-            AstNode::Break => {
-                // Break statement - should be handled by loop constructs
-                Err("Break statement outside of loop".to_string())
-            }
-
-            AstNode::Continue => {
-                // Continue statement - should be handled by loop constructs
-                Err("Continue statement outside of loop".to_string())
-            }
-
-            AstNode::Underscore => {
-                // Anonymous variable - return the current pipeline value if available
-                Ok(self.get_variable("_").unwrap_or(Value::None))
-            }
-
-            // Advanced J features (not yet implemented)
-            AstNode::AutoFunction { .. } => Err("AutoFunction not yet implemented".to_string()),
-
-            AstNode::CheatBlock { .. } => Err("CheatBlock not yet implemented".to_string()),
-
-            AstNode::LiveVariable { .. } => Err("LiveVariable not yet implemented".to_string()),
-
-            AstNode::WhyExpression { .. } => Err("WhyExpression not yet implemented".to_string()),
-
-            AstNode::BlendExpression { .. } => {
-                Err("BlendExpression not yet implemented".to_string())
-            }
-
-            AstNode::EchoVariable { .. } => Err("EchoVariable not yet implemented".to_string()),
-
-            AstNode::TraceBlock { .. } => Err("TraceBlock not yet implemented".to_string()),
-
-            AstNode::GuardExpression { .. } => {
-                Err("GuardExpression not yet implemented".to_string())
-            }
-
-            AstNode::LensView { .. } => Err("LensView not yet implemented".to_string()),
-
-            // Memory management
-            AstNode::ArenaAllocation { .. } => {
-                Err("ArenaAllocation not yet implemented".to_string())
-            }
-
-            AstNode::StackAllocation { .. } => {
-                Err("StackAllocation not yet implemented".to_string())
-            }
-
-            // Concurrency
-            AstNode::TaskSpawn { body } => {
-                // Create a task ID and spawn the task
-                // For now, execute synchronously (true async would need runtime)
-                let task_id = self.next_future_id;
-                self.next_future_id += 1;
-
-                // Execute the task body
-                self.push_scope();
-                let _result = self.eval_node(body)?;
-                self.pop_scope();
-
-                // Return a Task value
-                Ok(Value::Task(task_id as u64))
-            }
-
-            AstNode::ChannelSend { channel, value } => {
-                // Evaluate channel and value
-                let chan_val = self.eval_node(channel)?;
-                let _val = self.eval_node(value)?;
-
-                // For now, just return success
-                // Full implementation would need a channel queue
-                match chan_val {
-                    Value::Channel(_id) => {
-                        // Store value in a hypothetical channel queue
-                        // For now, just acknowledge the send
-                        Ok(Value::Boolean(true))
-                    }
-                    _ => Err("ChannelSend requires a Channel value".to_string()),
-                }
-            }
-
-            AstNode::ChannelReceive { channel } => {
-                // Evaluate channel
-                let chan_val = self.eval_node(channel)?;
-
-                match chan_val {
-                    Value::Channel(_id) => {
-                        // For now, return None (no value in channel)
-                        // Full implementation would need a channel queue
-                        Ok(Value::None)
-                    }
-                    _ => Err("ChannelReceive requires a Channel value".to_string()),
-                }
-            }
-
-            AstNode::ScopeBlock { .. } => Err("ScopeBlock not yet implemented".to_string()),
-
-            // Testing
-            AstNode::TestCase { .. } => Err("TestCase not yet implemented".to_string()),
-
-            AstNode::PropertyTest { .. } => Err("PropertyTest not yet implemented".to_string()),
-
-            AstNode::Assertion { .. } => Err("Assertion not yet implemented".to_string()),
-
-            // Macros
-            AstNode::MacroDefinition { .. } => {
-                Err("MacroDefinition not yet implemented".to_string())
-            }
-
-            AstNode::MacroCall { .. } => Err("MacroCall not yet implemented".to_string()),
-
-            // ===== NEW ADVANCED FEATURE HANDLERS =====
-
-            // Traits
-            AstNode::TraitDeclaration { name, methods } => {
-                // Convert methods to TraitMethod structs
-                let trait_methods: Vec<TraitMethod> = methods.iter().filter_map(|m| {
-                    if let AstNode::FunctionDeclaration { name: method_name, params, return_type, body, .. } = m {
-                        Some(TraitMethod {
-                            name: method_name.clone(),
-                            params: params.clone(),
-                            return_type: return_type.clone(),
-                            default_impl: if matches!(body.as_ref(), AstNode::Block(statements) if statements.is_empty()) {
-                                None
-                            } else {
-                                Some(body.clone())
-                            },
-                        })
-                    } else {
-                        None
-                    }
-                }).collect();
-
-                let trait_val = Value::Trait {
-                    name: name.clone(),
-                    methods: trait_methods,
-                };
-
-                self.set_variable(name.clone(), trait_val);
-                Ok(Value::None)
-            }
-
-            // Async/Await
-            AstNode::AsyncFunction {
-                name,
-                params,
-                return_type: _,
-                body,
-            } => {
-                // Create an async function that can be awaited
-                // For now, it executes synchronously but returns a completed Future
-                let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
-                let func = Value::Function {
-                    name: format!("async_{}", name),
-                    params: param_names,
-                    body: body.clone(),
-                };
-
-                self.set_variable(name.clone(), func);
-                Ok(Value::None)
-            }
-
-            AstNode::AwaitExpression { expr } => {
-                let future_val = self.eval_node(expr)?;
-
-                // If it's a Future, get its result
-                if let Value::Future { result, state, .. } = future_val {
-                    match state {
-                        FutureState::Completed => {
-                            if let Some(res) = result {
-                                return Ok(*res);
-                            } else {
-                                return Ok(Value::None);
-                            }
-                        }
-                        FutureState::Failed(err) => {
-                            return Err(format!("Future failed: {}", err));
-                        }
-                        _ => {
-                            return Err(
-                                "Cannot await pending future (no async runtime)".to_string()
-                            );
-                        }
-                    }
-                }
-
-                // If it's a regular function call, just execute it synchronously
-                Ok(future_val)
-            }
-
-            // Module System
-            AstNode::ModuleDeclaration { name, body } => {
-                // Create a new scope for the module
-                self.push_scope();
-                let result = self.eval_node(body)?;
-
-                // Collect exports from module scope
-                let mut exports = HashMap::new();
-                if let Some(scope) = self.locals.last() {
-                    exports = scope.clone();
-                }
-
-                self.pop_scope();
-
-                // Store module
-                let module = Value::Module {
-                    name: name.clone(),
-                    path: format!("<inline:{}>", name),
-                    exports,
-                };
-
-                self.set_variable(name.clone(), module);
-                Ok(result)
-            }
-
-            AstNode::ImportStatement { module_path, items } => {
-                let path = module_path.join("/");
-                let module = self.load_module(&path)?;
-
-                if let Value::Module { exports, .. } = module {
-                    if items.is_empty() {
-                        // Import all exports
-                        for (name, value) in exports {
-                            self.set_variable(name, value);
-                        }
-                    } else {
-                        // Import specific items
-                        for item in items {
-                            if let Some(value) = exports.get(item) {
-                                self.set_variable(item.clone(), value.clone());
-                            } else {
-                                return Err(format!("Module {} does not export '{}'", path, item));
-                            }
-                        }
-                    }
-                }
-
-                Ok(Value::None)
-            }
-
-            AstNode::UseStatement { path } => {
-                // For now, just mark the use statement as processed
-                let path_str = path.join(".");
-                self.set_variable(format!("__use_{}", path_str), Value::Boolean(true));
-                Ok(Value::None)
-            }
-
-            // Generics
-            AstNode::GenericFunction {
-                name,
-                type_params: _,
-                params,
-                return_type: _,
-                body,
-            } => {
-                // For now, treat generic functions like regular functions
-                // In a full implementation, this would support type parameters
-                let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
-                let func = Value::Function {
-                    name: name.clone(),
-                    params: param_names,
-                    body: body.clone(),
-                };
-                self.set_variable(name.clone(), func);
-                Ok(Value::None)
-            }
-
-            AstNode::GenericClass {
-                name,
-                type_params: _,
-                parent,
-                traits: _,
-                fields,
-                methods,
-                static_fields,
-                static_methods,
-            } => {
-                // For now, treat generic classes like regular classes
-                // In a full implementation, this would support type parameters
-
-                // Convert fields to HashMap
-                let mut field_map = HashMap::new();
-                for field in fields {
-                    if let Some(default_value) = &field.default_value {
-                        let val = self.eval_node(default_value)?;
-                        field_map.insert(field.name.clone(), val);
-                    } else {
-                        field_map.insert(field.name.clone(), Value::None);
-                    }
-                }
-
-                // Convert methods to HashMap
-                let mut method_map = HashMap::new();
-                for method in methods {
-                    if let AstNode::FunctionDeclaration {
-                        name, params, body, ..
-                    } = method
-                    {
-                        let param_names: Vec<String> =
-                            params.iter().map(|(_, p)| p.clone()).collect();
-                        let func = Value::Function {
-                            name: name.clone(),
-                            params: param_names,
-                            body: body.clone(),
-                        };
-                        method_map.insert(name.clone(), func);
-                    }
-                }
-
-                // Convert static fields to HashMap
-                let mut static_field_map = HashMap::new();
-                for field in static_fields {
-                    if let Some(default_value) = &field.default_value {
-                        let val = self.eval_node(default_value)?;
-                        static_field_map.insert(field.name.clone(), val);
-                    } else {
-                        static_field_map.insert(field.name.clone(), Value::None);
-                    }
-                }
-
-                // Convert static methods to HashMap
-                let mut static_method_map = HashMap::new();
-                for method in static_methods {
-                    if let AstNode::FunctionDeclaration {
-                        name, params, body, ..
-                    } = method
-                    {
-                        let param_names: Vec<String> =
-                            params.iter().map(|(_, p)| p.clone()).collect();
-                        let func = Value::Function {
-                            name: name.clone(),
-                            params: param_names,
-                            body: body.clone(),
-                        };
-                        static_method_map.insert(name.clone(), func);
-                    }
-                }
-
-                let class_value = Value::Class {
-                    name: name.clone(),
-                    class_type: None, // GenericClass doesn't have class_type modifier
-                    parent: parent.clone(),
-                    fields: field_map,
-                    methods: method_map,
-                    static_fields: static_field_map,
-                    static_methods: static_method_map,
-                };
-                self.set_variable(name.clone(), class_value);
-                Ok(Value::None)
-            }
-            // jnew_features: run body or stub
-            AstNode::ExtendType {
-                target_type: _,
-                methods: _,
-            } => Ok(Value::None),
-            AstNode::PhantomDecl { name: _ } => Ok(Value::None),
-            AstNode::MemoVarDeclaration {
-                var_type: _,
-                name,
-                params,
-                body,
-            } => {
-                let param_names: Vec<String> = params.iter().map(|(_, p)| p.clone()).collect();
-                let func = Value::Function {
-                    name: name.clone(),
-                    params: param_names,
-                    body: body.clone(),
-                };
-                self.set_variable(name.clone(), func);
-                Ok(Value::None)
-            }
-            AstNode::FuzzLoop {
-                var_type: _,
-                var_name,
-                range_opt: _,
-                condition,
-                body,
-                else_body,
-            } => {
-                self.push_scope();
-                let mut result = Value::None;
-                for i in 0..100 {
-                    self.set_variable(var_name.clone(), Value::Integer(i));
-                    let cond = self.eval_node(condition)?;
-                    if let Value::Boolean(false) = cond {
-                        if let Some(eb) = else_body {
-                            result = self.eval_node(eb)?;
-                        }
-                        break;
-                    }
-                    result = self.eval_node(body)?;
-                }
-                self.pop_scope();
-                Ok(result)
-            }
-            AstNode::WithinLoop {
-                duration_expr: _,
-                loop_var,
-                iterable,
-                body,
-                else_body,
-            } => {
-                if let (Some(var), Some(iter)) = (loop_var, iterable) {
-                    let list = self.eval_node(iter)?;
-                    if let Value::List(items) = list {
-                        self.push_scope();
-                        let mut last = Value::None;
-                        for item in items {
-                            self.set_variable(var.clone(), item);
-                            last = self.eval_node(body)?;
-                        }
-                        self.pop_scope();
-                        Ok(last)
-                    } else {
-                        self.eval_node(body)?;
-                        Ok(Value::None)
-                    }
-                } else {
-                    self.eval_node(body)?;
-                    if let Some(eb) = else_body {
-                        self.eval_node(eb)
-                    } else {
-                        Ok(Value::None)
-                    }
-                }
-            }
-            AstNode::RollbackBlock { retries: _, body } => self.eval_node(body),
-            AstNode::RetryKeyword => Err("retry only valid inside rollback".to_string()),
-            AstNode::RaceBlock { branches } => {
-                if branches.is_empty() {
-                    Ok(Value::None)
-                } else {
-                    self.eval_node(&branches[0].1)
-                }
-            }
-            AstNode::BarrierDecl { name, count: _ } => {
-                self.set_variable(name.clone(), Value::Integer(0));
-                Ok(Value::None)
-            }
-            AstNode::RetryBlock {
-                attempts: _,
-                backoff: _,
-                jitter: _,
-                body,
-            } => self.eval_node(body),
-            AstNode::SecureBlock { body } => self.eval_node(body),
-            AstNode::ComponentDecl {
-                name,
-                deps: _,
-                fields: _,
-                methods: _,
-            } => {
-                self.set_variable(name.clone(), Value::None);
-                Ok(Value::None)
-            }
-            AstNode::ContractDecl { name, methods: _ } => {
-                self.set_variable(name.clone(), Value::None);
-                Ok(Value::None)
-            }
-            AstNode::WorkspaceBlock {
-                members: _,
-                rules: _,
-            } => Ok(Value::None),
-            AstNode::TaskDecl {
-                name: _,
-                needs: _,
-                body,
-            } => self.eval_node(body),
-            AstNode::EnvSchema { name: _, fields: _ } => Ok(Value::None),
-            AstNode::PacketDecl { name: _, fields: _ } => Ok(Value::None),
-            AstNode::FloodLoop { start: _, body } => self.eval_node(body),
-            AstNode::WindowLoop {
-                var,
-                iterable,
-                size,
-                shrink_condition,
-                body,
-            } => {
-                let list = self.eval_node(iterable)?;
-                if let Value::List(items) = list {
-                    self.push_scope();
-                    let mut last = Value::None;
-
-                    // Determine window size
-                    let window_size = if let Some(size_expr) = size {
-                        match self.eval_node(size_expr)? {
-                            Value::Integer(s) => s as usize,
-                            _ => return Err("Window size must be an integer".to_string()),
-                        }
-                    } else {
-                        1 // Default: growing window
-                    };
-
-                    if let Some(shrink_cond) = shrink_condition {
-                        // Sliding window with shrink condition
-                        let mut left = 0;
-                        let mut right = 0;
-
-                        while right < items.len() {
-                            // Expand window
-                            right += 1;
-                            let slice: Vec<Value> = items[left..right].to_vec();
-                            self.set_variable(var.clone(), Value::List(slice.clone()));
-
-                            // Check shrink condition
-                            let should_shrink = match self.eval_node(shrink_cond)? {
-                                Value::Boolean(b) => b,
-                                _ => false,
-                            };
-
-                            // Shrink window if condition met
-                            while should_shrink && left < right {
-                                left += 1;
-                                let slice: Vec<Value> = items[left..right].to_vec();
-                                self.set_variable(var.clone(), Value::List(slice));
-
-                                let still_shrink = match self.eval_node(shrink_cond)? {
-                                    Value::Boolean(b) => b,
-                                    _ => false,
-                                };
-                                if !still_shrink {
-                                    break;
-                                }
-                            }
-
-                            last = self.eval_node(body)?;
-                        }
-                    } else if window_size == 1 {
-                        // Growing window (original behavior)
-                        for i in 0..items.len() {
-                            let slice: Vec<Value> = items[..=i].to_vec();
-                            self.set_variable(var.clone(), Value::List(slice));
-                            last = self.eval_node(body)?;
-                        }
-                    } else {
-                        // Fixed-size sliding window
-                        for i in 0..=(items.len().saturating_sub(window_size)) {
-                            let slice: Vec<Value> = items[i..i + window_size].to_vec();
-                            self.set_variable(var.clone(), Value::List(slice));
-                            last = self.eval_node(body)?;
-                        }
-                    }
-
-                    self.pop_scope();
-                    Ok(last)
-                } else {
-                    Err("window loop requires a list".to_string())
-                }
-            }
-            AstNode::SolverBlock {
-                name: _,
-                options: _,
-                body,
-            } => self.eval_node(body),
-
-            // New algorithm helper nodes
-            AstNode::IntervalLiteral { start, end } => {
-                let start_val = self.eval_node(start)?;
-                let end_val = self.eval_node(end)?;
-                match (start_val, end_val) {
-                    (Value::Integer(s), Value::Integer(e)) => Ok(Value::Interval(s, e)),
-                    _ => Err("Interval requires integer start and end".to_string()),
-                }
-            }
-
-            AstNode::GroupBy { collection, key_fn } => {
-                let coll = self.eval_node(collection)?;
-                if let Value::List(items) = coll {
-                    let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
-
-                    for item in items {
-                        // Call the key function with the item
-                        let key_val = match self.eval_node(key_fn)? {
-                            Value::Function { params, body, .. } => {
-                                if params.len() != 1 {
-                                    return Err(
-                                        "group_by key function must take exactly 1 parameter"
-                                            .to_string(),
-                                    );
-                                }
-                                self.push_scope();
-                                self.set_variable(params[0].clone(), item.clone());
-                                let result = self.eval_node(&body)?;
-                                self.pop_scope();
-                                result
-                            }
-                            _ => return Err("group_by requires a function as key".to_string()),
-                        };
-
-                        // Convert key to string
-                        let key_str = key_val.to_string();
-                        groups.entry(key_str).or_default().push(item);
-                    }
-
-                    // Convert to dict of lists
-                    let mut result = HashMap::new();
-                    for (key, values) in groups {
-                        result.insert(key, Value::List(values));
-                    }
-                    Ok(Value::Dict(result))
-                } else {
-                    Err("group_by requires a list".to_string())
-                }
-            }
-
-            AstNode::Partition {
-                collection,
-                predicate,
-            } => {
-                let coll = self.eval_node(collection)?;
-                if let Value::List(items) = coll {
-                    let mut true_items = Vec::new();
-                    let mut false_items = Vec::new();
-
-                    for item in items {
-                        // Call the predicate function with the item
-                        let pred_result = match self.eval_node(predicate)? {
-                            Value::Function { params, body, .. } => {
-                                if params.len() != 1 {
-                                    return Err(
-                                        "partition predicate must take exactly 1 parameter"
-                                            .to_string(),
-                                    );
-                                }
-                                self.push_scope();
-                                self.set_variable(params[0].clone(), item.clone());
-                                let result = self.eval_node(&body)?;
-                                self.pop_scope();
-                                result
-                            }
-                            _ => {
-                                return Err("partition requires a function as predicate".to_string())
-                            }
-                        };
-
-                        match pred_result {
-                            Value::Boolean(true) => true_items.push(item),
-                            Value::Boolean(false) => false_items.push(item),
-                            _ => {
-                                return Err("partition predicate must return a boolean".to_string())
-                            }
-                        }
-                    }
-
-                    // Return tuple of (true_items, false_items)
-                    Ok(Value::Tuple(vec![
-                        Value::List(true_items),
-                        Value::List(false_items),
-                    ]))
-                } else {
-                    Err("partition requires a list".to_string())
-                }
-            }
-
-            AstNode::DeferAttach { resource, cleanup } => {
-                let resource_val = self.eval_node(resource)?;
-                if let Some(frame) = self.defer_stack.last_mut() {
-                    frame.push((*cleanup.clone(), Some(resource_val.clone())));
-                }
-                Ok(resource_val)
-            }
-
-            // Generators and comprehensions
-            AstNode::Generator { params, body } => {
-                // Create a generator function that yields values
-                Ok(Value::Function {
-                    name: "<generator>".to_string(),
-                    params: params.clone(),
-                    body: body.clone(),
-                })
-            }
-
-            AstNode::Yield { value } => {
-                // Yield a value from a generator
-                let val = self.eval_node(value)?;
-                // In a real implementation, this would suspend execution
-                // For now, we'll just return the value
-                Ok(val)
-            }
-        }
-    }
-
-    fn call_function(&mut self, name: &str, args: &[AstNode]) -> Result<Value, String> {
+    pub(super) fn call_function(&mut self, name: &str, args: &[AstNode]) -> Result<Value, String> {
         // Handle built-in functions
         match name {
             "out" => {
@@ -6662,22 +2214,22 @@ impl Interpreter {
                         // Print table with borders
                         let total_width: usize =
                             max_widths.iter().sum::<usize>() + (max_widths.len() * 3) + 1;
-                        println!("{}", "─".repeat(total_width));
+                        println!("{}", "â”€".repeat(total_width));
 
                         for (row_idx, row) in string_rows.iter().enumerate() {
-                            print!("│");
+                            print!("â”‚");
                             for (i, cell) in row.iter().enumerate() {
-                                print!(" {:width$} │", cell, width = max_widths[i]);
+                                print!(" {:width$} â”‚", cell, width = max_widths[i]);
                             }
                             println!();
 
                             if row_idx == 0 {
                                 // Header separator
-                                println!("{}", "─".repeat(total_width));
+                                println!("{}", "â”€".repeat(total_width));
                             }
                         }
 
-                        println!("{}", "─".repeat(total_width));
+                        println!("{}", "â”€".repeat(total_width));
                         Ok(Value::None)
                     }
                     _ => Err("table() expects a list of lists".to_string()),
@@ -6720,7 +2272,7 @@ impl Interpreter {
 
                     // Use carriage return to overwrite the same line
                     print!("\r[");
-                    print!("{}", "█".repeat(filled));
+                    print!("{}", "â–ˆ".repeat(filled));
                     print!("{}", " ".repeat(empty));
                     print!("] {:.0}%", current_percent);
                     let _ = io::stdout().flush();
@@ -8217,16 +3769,14 @@ impl Interpreter {
                         });
                         let (path, distance) = self.dijkstra_search(&graph, &start, goal.as_deref())?;
                         let mut result_dict = HashMap::new();
-                            result_dict.insert(
-                                "path".to_string(),
-                                Value::List(
-                                    path.into_iter().map(Value::String).collect(),
-                                ),
-                            );
-                            result_dict.insert("distance".to_string(), Value::Float(distance));
-                                Ok(Value::Dict(result_dict))
-                            }
-                        }
+                        result_dict.insert(
+                            "path".to_string(),
+                            Value::List(
+                                path.into_iter().map(Value::String).collect(),
+                            ),
+                        );
+                        result_dict.insert("distance".to_string(), Value::Float(distance));
+                        Ok(Value::Dict(result_dict))
                     }
                     _ => Err("dijkstra() expects graph and string start node".to_string()),
                 }
@@ -8932,7 +4482,7 @@ impl Interpreter {
                     Value::List(list) => {
                         for (i, item) in list.iter().enumerate() {
                             let result =
-                                self.call_value_with_args(pred_val.clone(), &[item.clone()], None)?;
+                                self.call_value_with_args(pred_val.clone(), std::slice::from_ref(item), None)?;
                             match result {
                                 Value::Boolean(true) => return Ok(Value::Integer(i as i64)),
                                 Value::Boolean(false) => {}
@@ -9138,8 +4688,8 @@ impl Interpreter {
                                 }
                             };
 
-                            for j in (i + 1)..(i + k) {
-                                if let Value::Integer(n) = &list[j] {
+                            for elem in list.iter().skip(i + 1).take(k - 1) {
+                                if let Value::Integer(n) = elem {
                                     if *n > max_val {
                                         max_val = *n;
                                     }
@@ -9476,7 +5026,7 @@ impl Interpreter {
                         let mut result = Vec::new();
                         for item in list {
                             let pred_result =
-                                self.call_value_with_args(pred_val.clone(), &[item.clone()], None)?;
+                                self.call_value_with_args(pred_val.clone(), std::slice::from_ref(&item), None)?;
                             match pred_result {
                                 Value::Boolean(true) => result.push(item),
                                 Value::Boolean(false) => break,
@@ -9512,7 +5062,7 @@ impl Interpreter {
                             if dropping {
                                 let pred_result = self.call_value_with_args(
                                     pred_val.clone(),
-                                    &[item.clone()],
+                                    std::slice::from_ref(&item),
                                     None,
                                 )?;
                                 match pred_result {
@@ -9641,8 +5191,8 @@ impl Interpreter {
                 let mut lists: Vec<Vec<Value>> = Vec::new();
                 let mut max_len = 0;
 
-                for i in 0..(args.len() - 1) {
-                    let val = self.eval_node(&args[i])?;
+                for arg in args.iter().take(args.len() - 1) {
+                    let val = self.eval_node(arg)?;
                     match val {
                         Value::List(list) => {
                             max_len = max_len.max(list.len());
@@ -9734,15 +5284,15 @@ impl Interpreter {
                         }
 
                         let mut result = vec![list[0].clone()];
-                        for i in 1..list.len() {
+                        for item in list.iter().skip(1) {
                             let prev_key = if let Some(last) = result.last() {
                                 format!("{:?}", last)
                             } else {
                                 String::new()
                             };
-                            let curr_key = format!("{:?}", list[i]);
+                            let curr_key = format!("{:?}", item);
                             if prev_key != curr_key {
-                                result.push(list[i].clone());
+                                result.push(item.clone());
                             }
                         }
 
@@ -9790,7 +5340,7 @@ impl Interpreter {
                 Ok(Value::String(json_str))
             }
 
-            // 🦆 SECRET EASTER EGG - Not documented anywhere!
+            // ðŸ¦† SECRET EASTER EGG - Not documented anywhere!
             // Only activates with exact parameters, otherwise silently returns None
             "quack_check" => {
                 if args.len() != 3 {
@@ -9814,7 +5364,7 @@ impl Interpreter {
                 };
 
                 if sound_match && num_match && ducks_match {
-                    // 🎉 Easter egg activated!
+                    // ðŸŽ‰ Easter egg activated!
                     println!("Ethan likes ducks!");
                     println!("     __");
                     println!("   <(o )___");
@@ -11226,7 +6776,7 @@ impl Interpreter {
         }
     }
 
-    fn eval_binary_op(&self, left: &Value, op: &BinaryOp, right: &Value) -> Result<Value, String> {
+    pub(super) fn eval_binary_op(&self, left: &Value, op: &BinaryOp, right: &Value) -> Result<Value, String> {
         match (left, op, right) {
             (Value::Integer(a), BinaryOp::Add, Value::Integer(b)) => a
                 .checked_add(*b)
@@ -11670,7 +7220,7 @@ impl Interpreter {
         }
     }
 
-    fn eval_unary_op(&self, op: &UnaryOp, operand: &Value) -> Result<Value, String> {
+    pub(super) fn eval_unary_op(&self, op: &UnaryOp, operand: &Value) -> Result<Value, String> {
         match (op, operand) {
             (UnaryOp::Minus, Value::Integer(i)) => Ok(Value::Integer(-i)),
             (UnaryOp::Minus, Value::Float(f)) => Ok(Value::Float(-f)),
@@ -11681,7 +7231,7 @@ impl Interpreter {
         }
     }
 
-    fn pattern_matches(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
+    pub(super) fn pattern_matches(&mut self, pattern: &Pattern, value: &Value) -> Result<bool, String> {
         match (pattern, value) {
             (Pattern::Wildcard, _) => Ok(true),
             (Pattern::Literal(lit_node), _) => {
@@ -11727,7 +7277,7 @@ impl Interpreter {
         }
     }
 
-    fn values_equal(&self, a: &Value, b: &Value) -> bool {
+    pub(super) fn values_equal(&self, a: &Value, b: &Value) -> bool {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => a == b,
             (Value::Float(a), Value::Float(b)) => (a - b).abs() < f64::EPSILON,
@@ -11748,7 +7298,7 @@ impl Interpreter {
         }
     }
 
-    fn is_truthy(&self, value: &Value) -> bool {
+    pub(super) fn is_truthy(&self, value: &Value) -> bool {
         match value {
             Value::Boolean(b) => *b,
             Value::Integer(i) => *i != 0,
@@ -11761,7 +7311,7 @@ impl Interpreter {
     }
 
     // CRITICAL FIX: Matrix validation to prevent ragged matrices
-    fn validate_matrix(&self, rows: &Vec<Vec<f64>>) -> Result<(), String> {
+    pub(super) fn validate_matrix(&self, rows: &[Vec<f64>]) -> Result<(), String> {
         if rows.is_empty() {
             return Ok(());
         }
@@ -11779,7 +7329,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn get_property(&self, obj: &Value, field: &str) -> Result<Value, String> {
+    pub(super) fn get_property(&self, obj: &Value, field: &str) -> Result<Value, String> {
         match obj {
             Value::Class {
                 name: class_name,
@@ -11887,7 +7437,7 @@ impl Interpreter {
         }
     }
 
-    fn get_instance_method(&self, class_name: &str, method_name: &str) -> Result<Value, String> {
+    pub(super) fn get_instance_method(&self, class_name: &str, method_name: &str) -> Result<Value, String> {
         let class_val = self.get_variable(class_name)?;
         if let Value::Class { methods, .. } = class_val {
             if let Some(m) = methods.get(method_name) {
@@ -11909,7 +7459,7 @@ impl Interpreter {
         }
     }
 
-    fn call_value(
+    pub(super) fn call_value(
         &mut self,
         callee: Value,
         args: &[AstNode],
@@ -11922,7 +7472,7 @@ impl Interpreter {
         self.call_value_with_args(callee, &eval_args, this_opt)
     }
 
-    fn call_value_with_args(
+    pub(super) fn call_value_with_args(
         &mut self,
         callee: Value,
         eval_args: &[Value],
@@ -11950,7 +7500,7 @@ impl Interpreter {
                 let class_val = self.get_variable(&class_name)?;
                 let Value::Class {
                     name: _,
-                    class_type: _,
+                    class_type,
                     parent: _,
                     fields: class_fields,
                     methods,
@@ -11960,22 +7510,54 @@ impl Interpreter {
                 else {
                     return Err(format!("'{}' is not a class", class_name));
                 };
+                
+                // Handle singleton class - return existing instance if it exists
+                if class_type.as_deref() == Some("singleton") {
+                    if let Some(existing) = self.singleton_registry.get(&class_name) {
+                        return Ok(existing.clone());
+                    }
+                }
+                
                 let instance_fields = class_fields.clone();
+                
+                // Handle data class - add auto-generated methods
+                if class_type.as_deref() == Some("data") {
+                    // Data classes get automatic .copy(), .hash(), ==, .to_str()
+                    // These are handled in method calls and operators
+                }
+                
+                // Handle secure class - encrypt all fields
+                if class_type.as_deref() == Some("secure") {
+                    // Fields should already be marked as enc<T> in the class definition
+                    // Encryption happens at field assignment time
+                }
+                
                 let instance = Value::Instance {
                     class_name: class_name.clone(),
                     fields: instance_fields.clone(),
                 };
-                if let Some(init) = methods.get("init") {
-                    if let Value::Function { params, body, .. } = init {
-                        self.call_function_internal(
-                            "init",
-                            eval_args,
-                            params,
-                            body,
-                            Some(instance.clone()),
-                        )?;
-                    }
+                
+                // Call init method if it exists
+                if let Some(Value::Function { params, body, .. }) = methods.get("init") {
+                    self.call_function_internal(
+                        "init",
+                        eval_args,
+                        params,
+                        body,
+                        Some(instance.clone()),
+                    )?;
                 }
+                
+                // Store singleton instance
+                if class_type.as_deref() == Some("singleton") {
+                    self.singleton_registry.insert(class_name.clone(), instance.clone());
+                }
+                
+                // Track resource class for cleanup
+                if class_type.as_deref() == Some("resource") {
+                    self.resource_stack.push((class_name.clone(), instance.clone()));
+                }
+                
                 Ok(instance)
             }
             Value::Function { name, params, body } => {
@@ -12274,7 +7856,7 @@ impl Interpreter {
         }
     }
 
-    fn get_variable(&self, name: &str) -> Result<Value, String> {
+    pub(super) fn get_variable(&self, name: &str) -> Result<Value, String> {
         // Check static variables first
         if let Some(value) = self.statics.get(name) {
             return Ok(value.clone());
@@ -12296,7 +7878,7 @@ impl Interpreter {
         }
     }
 
-    fn set_variable(&mut self, name: String, value: Value) {
+    pub(super) fn set_variable(&mut self, name: String, value: Value) {
         if let Some(scope) = self.locals.last_mut() {
             scope.insert(name, value);
         } else {
@@ -12305,7 +7887,7 @@ impl Interpreter {
     }
 
     /// Assign to an existing variable, traversing scopes from innermost to outermost
-    fn assign_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
+    pub(super) fn assign_variable(&mut self, name: &str, value: Value) -> Result<(), String> {
         // Search from innermost to outermost local scope
         for scope in self.locals.iter_mut().rev() {
             if scope.contains_key(name) {
@@ -12330,7 +7912,7 @@ impl Interpreter {
     }
 
     // Module system helper methods
-    fn load_module(&mut self, path: &str) -> Result<Value, String> {
+    pub(super) fn load_module(&mut self, path: &str) -> Result<Value, String> {
         // Check cache first
         if let Some(cached) = self.module_cache.get(path) {
             return Ok(cached.clone());
@@ -12410,20 +7992,20 @@ impl Interpreter {
         Err(format!("Module not found: {}", path))
     }
 
-    fn push_scope(&mut self) {
+    pub(super) fn push_scope(&mut self) {
         self.locals.push(HashMap::new());
     }
 
-    fn pop_scope(&mut self) {
+    pub(super) fn pop_scope(&mut self) {
         self.locals.pop();
     }
 
-    fn execute_file(&mut self, filename: &str) -> Result<Value, String> {
+    pub(super) fn execute_file(&mut self, filename: &str) -> Result<Value, String> {
         // Read the file
         let source = std::fs::read_to_string(filename)
             .map_err(|e| format!("Error reading file '{}': {}", filename, e))?;
 
-        println!("🔥 Executing J file: {}", filename);
+        println!("ðŸ”¥ Executing J file: {}", filename);
 
         // Tokenize
         let mut lexer = crate::lexer::Lexer::new(&source);
@@ -12441,7 +8023,7 @@ impl Interpreter {
         self.eval_node(&ast)
     }
 
-    fn normalize_slice_indices(
+    pub(super) fn normalize_slice_indices(
         &self,
         start: Option<i64>,
         end: Option<i64>,
@@ -12499,11 +8081,11 @@ impl Interpreter {
         let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
 
         // Initialize first row and column
-        for i in 0..=len1 {
-            matrix[i][0] = i;
+        for (i, row) in matrix.iter_mut().enumerate().take(len1 + 1) {
+            row[0] = i;
         }
-        for j in 0..=len2 {
-            matrix[0][j] = j;
+        for (j, cell) in matrix[0].iter_mut().enumerate().take(len2 + 1) {
+            *cell = j;
         }
 
         // Fill the matrix
@@ -12521,46 +8103,6 @@ impl Interpreter {
         }
 
         matrix[len1][len2]
-    }
-
-    #[allow(dead_code)]
-    fn compare_values(&self, a: &Value, b: &Value) -> Result<std::cmp::Ordering, String> {
-        use std::cmp::Ordering;
-        match (a, b) {
-            (Value::Integer(x), Value::Integer(y)) => Ok(x.cmp(y)),
-            (Value::Float(x), Value::Float(y)) => {
-                if x < y {
-                    Ok(Ordering::Less)
-                } else if x > y {
-                    Ok(Ordering::Greater)
-                } else {
-                    Ok(Ordering::Equal)
-                }
-            }
-            (Value::Integer(x), Value::Float(y)) => {
-                let x = *x as f64;
-                if x < *y {
-                    Ok(Ordering::Less)
-                } else if x > *y {
-                    Ok(Ordering::Greater)
-                } else {
-                    Ok(Ordering::Equal)
-                }
-            }
-            (Value::Float(x), Value::Integer(y)) => {
-                let y = *y as f64;
-                if x < &y {
-                    Ok(Ordering::Less)
-                } else if x > &y {
-                    Ok(Ordering::Greater)
-                } else {
-                    Ok(Ordering::Equal)
-                }
-            }
-            (Value::String(x), Value::String(y)) => Ok(x.cmp(y)),
-            (Value::Char(x), Value::Char(y)) => Ok(x.cmp(y)),
-            _ => Err(format!("Cannot compare {:?} and {:?}", a, b)),
-        }
     }
 
     // KMP (Knuth-Morris-Pratt) string search algorithm
@@ -12919,10 +8461,10 @@ impl Interpreter {
             let mut real = 0.0;
             let mut imag = 0.0;
 
-            for j in 0..n {
+            for (j, s) in samples.iter().enumerate().take(n) {
                 let angle = -2.0 * std::f64::consts::PI * (k as f64) * (j as f64) / (n as f64);
-                real += samples[j] * angle.cos();
-                imag += samples[j] * angle.sin();
+                real += s * angle.cos();
+                imag += s * angle.sin();
             }
 
             // Return magnitude
@@ -13042,13 +8584,13 @@ impl Interpreter {
                         let formatted = if parts.len() > 1 {
                             // Has format specifier
                             let spec = parts[1].trim();
-                            if spec.starts_with('>') {
+                            if let Some(stripped) = spec.strip_prefix('>') {
                                 // Right align
-                                let width: usize = spec[1..].parse().unwrap_or(0);
+                                let width: usize = stripped.parse().unwrap_or(0);
                                 format!("{:>width$}", value, width = width)
-                            } else if spec.starts_with('<') {
+                            } else if let Some(stripped) = spec.strip_prefix('<') {
                                 // Left align
-                                let width: usize = spec[1..].parse().unwrap_or(0);
+                                let width: usize = stripped.parse().unwrap_or(0);
                                 format!("{:<width$}", value, width = width)
                             } else if spec.starts_with(".2f") || spec.starts_with(".1f") {
                                 // Float formatting
@@ -13250,7 +8792,7 @@ impl Interpreter {
     }
 
     fn print_progress_bar(&self, percent: f64, width: usize, color: &str) -> Result<(), String> {
-        let clamped_percent = percent.max(0.0).min(100.0);
+        let clamped_percent = percent.clamp(0.0, 100.0);
         let filled = ((clamped_percent / 100.0) * width as f64) as usize;
         let empty = width - filled;
 
@@ -13268,12 +8810,12 @@ impl Interpreter {
 
         print!("[");
         for _ in 0..filled {
-            print!("█");
+            print!("â–ˆ");
         }
         if filled < width {
             // Use half block for partial
             if (clamped_percent / 100.0 * width as f64) - filled as f64 > 0.5 {
-                print!("▌");
+                print!("â–Œ");
                 for _ in 0..(empty - 1) {
                     print!(" ");
                 }
@@ -13299,7 +8841,7 @@ impl Interpreter {
     ) -> Result<(), String> {
         let frames: Vec<&str> = match anim_type {
             "spinner" => vec!["|", "/", "-", "\\"],
-            "dots" => vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+            "dots" => vec!["â ‹", "â ™", "â ¹", "â ¸", "â ¼", "â ´", "â ¦", "â §", "â ‡", "â "],
             "bar" => {
                 // Indeterminate progress bar animation
                 let mut frames = Vec::new();
@@ -13318,7 +8860,7 @@ impl Interpreter {
                 return Err("Bar animation not fully implemented".to_string());
             }
             "bounce" => {
-                // Bounce animation: ••••• → • •••• → •• ••• etc.
+                // Bounce animation: â€¢â€¢â€¢â€¢â€¢ â†’ â€¢ â€¢â€¢â€¢â€¢ â†’ â€¢â€¢ â€¢â€¢â€¢ etc.
                 let mut frames = Vec::new();
                 for i in 0..5 {
                     let mut frame = String::new();
@@ -13326,7 +8868,7 @@ impl Interpreter {
                         if j == i {
                             frame.push(' ');
                         } else {
-                            frame.push('•');
+                            frame.push('\u{2022}');
                         }
                     }
                     frames.push(frame);
@@ -13436,17 +8978,17 @@ impl Interpreter {
         use std::time::Duration;
 
         let frames = match style {
-            "dots" => vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+            "dots" => vec!["â ‹", "â ™", "â ¹", "â ¸", "â ¼", "â ´", "â ¦", "â §", "â ‡", "â "],
             "line" => vec!["-", "\\", "|", "/"],
-            "arrow" => vec!["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"],
-            "bounce" => vec!["⠁", "⠂", "⠄", "⠂"],
-            "box" => vec!["◰", "◳", "◲", "◱"],
-            "circle" => vec!["◐", "◓", "◑", "◒"],
-            "square" => vec!["◰", "◳", "◲", "◱"],
-            "triangle" => vec!["◢", "◣", "◤", "◥"],
-            "pulse" => vec!["●", "○", "●", "○"],
-            "grow" => vec!["▁", "▃", "▅", "▇", "█", "▇", "▅", "▃"],
-            _ => vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+            "arrow" => vec!["â†", "â†–", "â†‘", "â†—", "â†’", "â†˜", "â†“", "â†™"],
+            "bounce" => vec!["â ", "â ‚", "â „", "â ‚"],
+            "box" => vec!["â—°", "â—³", "â—²", "â—±"],
+            "circle" => vec!["â—", "â—“", "â—‘", "â—’"],
+            "square" => vec!["â—°", "â—³", "â—²", "â—±"],
+            "triangle" => vec!["â—¢", "â—£", "â—¤", "â—¥"],
+            "pulse" => vec!["â—", "â—‹", "â—", "â—‹"],
+            "grow" => vec!["â–", "â–ƒ", "â–…", "â–‡", "â–ˆ", "â–‡", "â–…", "â–ƒ"],
+            _ => vec!["â ‹", "â ™", "â ¹", "â ¸", "â ¼", "â ´", "â ¦", "â §", "â ‡", "â "],
         };
 
         let iterations = (duration * 10.0) as usize;
@@ -13458,7 +9000,7 @@ impl Interpreter {
             thread::sleep(Duration::from_millis(100));
         }
 
-        println!("\r\x1b[32m✓\x1b[0m {} \x1b[32mDone!\x1b[0m", message);
+        println!("\r\x1b[32mâœ“\x1b[0m {} \x1b[32mDone!\x1b[0m", message);
         Ok(())
     }
 
@@ -13468,11 +9010,11 @@ impl Interpreter {
 
     fn show_panel(&self, text: &str, title: Option<&str>, style: &str) -> Result<(), String> {
         let (top_left, top_right, bottom_left, bottom_right, horizontal, vertical) = match style {
-            "double" => ("╔", "╗", "╚", "╝", "═", "║"),
-            "rounded" => ("╭", "╮", "╰", "╯", "─", "│"),
-            "bold" => ("┏", "┓", "┗", "┛", "━", "┃"),
+            "double" => ("\u{2554}", "\u{2557}", "\u{255A}", "\u{255D}", "\u{2550}", "\u{2551}"),
+            "rounded" => ("\u{256D}", "\u{256E}", "\u{2570}", "\u{256F}", "\u{2500}", "\u{2502}"),
+            "bold" => ("\u{258F}", "\u{2590}", "\u{2597}", "\u{259D}", "\u{2501}", "\u{2503}"),
             "ascii" => ("+", "+", "+", "+", "-", "|"),
-            _ => ("┌", "┐", "└", "┘", "─", "│"), // single
+            _ => ("\u{250C}", "\u{2510}", "\u{2514}", "\u{2518}", "\u{2500}", "\u{2502}"), // single
         };
 
         let lines: Vec<&str> = text.lines().collect();
@@ -13517,28 +9059,28 @@ impl Interpreter {
     fn show_box(&self, text: &str, width: usize) -> Result<(), String> {
         let lines: Vec<&str> = text.lines().collect();
 
-        println!("┌{}┐", "─".repeat(width));
+        println!("â”Œ{}â”", "â”€".repeat(width));
         for line in lines {
             let padding = if line.len() < width {
                 width - line.len()
             } else {
                 0
             };
-            println!("│ {}{} │", line, " ".repeat(padding));
+            println!("â”‚ {}{} â”‚", line, " ".repeat(padding));
         }
-        println!("└{}┘", "─".repeat(width));
+        println!("â””{}â”˜", "â”€".repeat(width));
 
         Ok(())
     }
 
     fn show_status(&self, status_type: &str, message: &str) -> Result<(), String> {
         let (icon, color) = match status_type {
-            "success" | "ok" => ("✓", "32"),   // Green
-            "error" | "fail" => ("✗", "31"),   // Red
-            "warning" | "warn" => ("⚠", "33"), // Yellow
-            "info" => ("ℹ", "36"),             // Cyan
+            "success" | "ok" => ("âœ“", "32"),   // Green
+            "error" | "fail" => ("âœ—", "31"),   // Red
+            "warning" | "warn" => ("âš ", "33"), // Yellow
+            "info" => ("â„¹", "36"),             // Cyan
             "question" => ("?", "35"),         // Magenta
-            _ => ("•", "37"),                  // White
+            _ => ("â€¢", "37"),                  // White
         };
 
         println!("\x1b[{}m{}\x1b[0m {}", color, icon, message);
@@ -13556,7 +9098,7 @@ impl Interpreter {
             Value::Dict(dict) => {
                 for (i, (key, value)) in dict.iter().enumerate() {
                     let is_last = i == dict.len() - 1;
-                    let prefix = if is_last { "└─" } else { "├─" };
+                    let prefix = if is_last { "â””â”€" } else { "â”œâ”€" };
 
                     print!("{}{} \x1b[36m{}\x1b[0m: ", " ".repeat(indent), prefix, key);
 
@@ -13572,7 +9114,7 @@ impl Interpreter {
             Value::List(list) => {
                 for (i, item) in list.iter().enumerate() {
                     let is_last = i == list.len() - 1;
-                    let prefix = if is_last { "└─" } else { "├─" };
+                    let prefix = if is_last { "â””â”€" } else { "â”œâ”€" };
 
                     print!("{}{} ", " ".repeat(indent), prefix);
 
@@ -13604,7 +9146,7 @@ impl Interpreter {
 
         for text in texts {
             let truncated = if text.len() > col_width - 2 {
-                format!("{}…", &text[..col_width - 3])
+                format!("{}â€¦", &text[..col_width - 3])
             } else {
                 text.clone()
             };

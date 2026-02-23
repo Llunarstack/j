@@ -1,6 +1,10 @@
+//! Lexer for the J programming language.
+//!
+//! Converts source text into a stream of tokens (keywords, literals, operators, etc.)
+//! with line/column tracking for error reporting.
+
 use crate::error::JError;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Literals
@@ -296,6 +300,14 @@ pub enum TokenType {
     // FFI
     Ffi,     // ffi (foreign function interface)
     Include, // include (header inclusion)
+
+    // OOB Features
+    Flow,  // flow (reactive data dependency graph)
+    Probe, // probe (runtime value inspection hooks)
+    Fuse,  // fuse (compile-time code fusion/inlining)
+    Veil,  // veil (oblivious data access)
+    Warp,  // warp (compile-time metaprogramming)
+    Ghost, // ghost (optional ghost variables)
 }
 
 #[derive(Debug, Clone)]
@@ -350,13 +362,11 @@ impl Lexer {
             let start_line = self.line;
             let start_column = self.column;
 
-            match self.scan_token()? {
-                Some(token_type) => {
-                    let lexeme = self.get_lexeme_from_current();
-                    tokens.push(Token::new(token_type, lexeme, start_line, start_column));
-                }
-                None => {} // Skip whitespace/comments
+            if let Some(token_type) = self.scan_token()? {
+                let lexeme = self.get_lexeme_from_current();
+                tokens.push(Token::new(token_type, lexeme, start_line, start_column));
             }
+            // None => skip whitespace/comments
         }
 
         tokens.push(Token::new(
@@ -818,7 +828,6 @@ impl Lexer {
 
         // Parse the number part
         let mut has_digits = false;
-        let _has_decimal = false;
 
         // Handle negative amounts
         if self.peek() == '-' {
@@ -832,7 +841,6 @@ impl Lexer {
 
         if self.peek() == '.' && self.peek_next().is_ascii_digit() {
             self.advance(); // consume '.'
-                            // has_decimal = true; // Not currently used
 
             while self.peek().is_ascii_digit() {
                 self.advance();
@@ -1048,6 +1056,14 @@ impl Lexer {
             "use" => TokenType::Use,
             "import" => TokenType::Import,
             "module" => TokenType::Module,
+
+            // OOB Features
+            "flow" => TokenType::Flow,
+            "probe" => TokenType::Probe,
+            "fuse" => TokenType::Fuse,
+            "veil" => TokenType::Veil,
+            "warp" => TokenType::Warp,
+            "ghost" => TokenType::Ghost,
             "mod" => TokenType::Mod,
 
             "try" => TokenType::Try,

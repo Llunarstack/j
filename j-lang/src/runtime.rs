@@ -1,10 +1,9 @@
+//! Runtime: memory, concurrency, and built-in services for J.
+
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
-
-// Runtime system for J language
-// Handles memory management, concurrency, and built-in functions
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -184,10 +183,7 @@ impl Runtime {
 
         handles
             .into_iter()
-            .filter_map(|h| match h.join() {
-                Ok(value) => value,
-                Err(_) => None,
-            })
+            .filter_map(|h| h.join().ok().flatten())
             .collect()
     }
 

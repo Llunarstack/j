@@ -17,6 +17,10 @@ path = "src/main.rs"
 name = "basic_types"
 path = "tests/integration/basic_types.rs"
 
+[[test]]
+name = "stellar_dungeon"
+path = "tests/integration/stellar_dungeon.rs"
+
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

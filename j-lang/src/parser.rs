@@ -1,3 +1,8 @@
+//! Recursive-descent parser for the J programming language.
+//!
+//! Builds an AST from the token stream produced by the lexer. Entry point is
+//! [`Parser::parse`], which returns a list of top-level statements.
+
 use crate::error::JError;
 use crate::lexer::{Token, TokenType};
 
@@ -563,6 +568,61 @@ pub enum AstNode {
         iterable: Box<AstNode>,
         condition: Option<Box<AstNode>>,
     },
+
+    // OOB Features - Out-of-Band mechanics
+    // 1. flow - Reactive data dependency graph
+    FlowBlock {
+        bindings: Vec<(String, FlowBindingType, AstNode)>, // (name, type, expr)
+    },
+    
+    // 2. probe - Runtime value inspection hooks
+    ProbeDeclaration {
+        target: String,
+        hooks: Vec<(String, AstNode)>, // (hook_name, callback)
+    },
+    
+    // 3. fuse - Compile-time code fusion/inlining
+    FuseHint {
+        target: Box<AstNode>, // function or pipeline to fuse
+    },
+    FusePipeline {
+        stages: Vec<AstNode>,
+    },
+    
+    // 4. veil - Oblivious data access (constant-time)
+    VeilBlock {
+        body: Box<AstNode>,
+    },
+    VeilGet {
+        collection: Box<AstNode>,
+        key: Box<AstNode>,
+    },
+    VeilSet {
+        collection: Box<AstNode>,
+        key: Box<AstNode>,
+        value: Box<AstNode>,
+    },
+    
+    // 5. warp - Compile-time metaprogramming
+    WarpTemplate {
+        name: String,
+        params: Vec<(String, String)>, // (type, name)
+        body: Box<AstNode>,
+    },
+    
+    // 6. ghost - Optional ghost variables (debug-only)
+    GhostDeclaration {
+        var_type: String,
+        name: String,
+        value: Box<AstNode>,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum FlowBindingType {
+    Direct,   // -> direct assignment
+    Derived,  // := computed/reactive
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,5 +1,5 @@
-// Enigma encryption module - Modern cryptography on steroids
-#![allow(unused_imports)]
+//! Enigma-style cryptography: AEAD, signing, key exchange, secrets.
+
 use aes_gcm::{
     aead::{Aead as AesAead, KeyInit as AesKeyInit, Payload as AesPayload},
     Aes256Gcm, Nonce as AesNonce,
@@ -9,7 +9,7 @@ use argon2::{
     Argon2, Params,
 };
 use chacha20poly1305::{
-    aead::{Aead, KeyInit, Payload},
+    aead::Payload,
     ChaCha20Poly1305, Nonce,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};

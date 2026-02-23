@@ -9,16 +9,24 @@
 **/dist/
 **/.parcel-cache/
 
-# VS Code local settings
+# IDE / editor
 **/.vscode/
+**/.idea/
+*.swp
+*.swo
+*~
 
-# OS/filesystem
+# OS / filesystem
 .DS_Store
 Thumbs.db
+*.log
 
-# Logs
+# Logs and local env
 **/*.log
+.env
+.env.local
 
-# Generated installers/output
+# Generated installers and build output
 /install/output/
 /j-lang/dist/
+dist/

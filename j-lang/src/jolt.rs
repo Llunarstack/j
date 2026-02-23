@@ -1,3 +1,5 @@
+//! Jolt package manager: project init, dependencies, scripts, publish.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -89,19 +91,16 @@ impl JoltManager {
             manifest.name = dir_name.to_string();
         }
 
-        // Create directories
         fs::create_dir_all(path)
             .map_err(|e| format!("Failed to create project directory: {}", e))?;
         fs::create_dir_all(path.join("src"))
             .map_err(|e| format!("Failed to create src directory: {}", e))?;
 
-        // Write manifest
         let toml_content = toml::to_string_pretty(&manifest)
             .map_err(|e| format!("Failed to serialize manifest: {}", e))?;
         fs::write(&manifest_path, toml_content)
             .map_err(|e| format!("Failed to write jolt.toml: {}", e))?;
 
-        // Create main.j file
         let main_file = path.join("main.j");
         if !main_file.exists() {
             fs::write(
@@ -111,7 +110,6 @@ impl JoltManager {
             .map_err(|e| format!("Failed to create main.j: {}", e))?;
         }
 
-        // Create README.md
         let readme_file = path.join("README.md");
         if !readme_file.exists() {
             let readme_content = format!(
@@ -134,16 +132,13 @@ impl JoltManager {
         let version = version.unwrap_or("latest");
         println!("📦 Installing {} @ {}", name, version);
 
-        // Create cache directory
         fs::create_dir_all(&self.cache_dir)
             .map_err(|e| format!("Failed to create cache directory: {}", e))?;
 
-        // For now, simulate package installation
         let package_dir = self.cache_dir.join(format!("{}-{}", name, version));
         fs::create_dir_all(&package_dir)
             .map_err(|e| format!("Failed to create package directory: {}", e))?;
 
-        // Create a dummy package manifest
         let manifest = JoltManifest {
             name: name.to_string(),
             version: version.to_string(),
@@ -172,26 +167,22 @@ impl JoltManager {
             return Err("No jolt.toml found. Run 'jolt init' first.".to_string());
         }
 
-        // Read existing manifest
         let manifest_content = fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read jolt.toml: {}", e))?;
 
         let mut manifest: JoltManifest = toml::from_str(&manifest_content)
             .map_err(|e| format!("Failed to parse jolt.toml: {}", e))?;
 
-        // Add dependency
         let version = version.unwrap_or("^0.1.0");
         manifest
             .dependencies
             .insert(name.to_string(), version.to_string());
 
-        // Write updated manifest
         let updated_content = toml::to_string_pretty(&manifest)
             .map_err(|e| format!("Failed to serialize updated manifest: {}", e))?;
         fs::write(&manifest_path, updated_content)
             .map_err(|e| format!("Failed to write updated jolt.toml: {}", e))?;
 
-        // Install the package
         self.install_package(name, Some(version))?;
 
         println!("✅ Added {} @ {} to dependencies", name, version);
@@ -205,19 +196,16 @@ impl JoltManager {
             return Err("No jolt.toml found.".to_string());
         }
 
-        // Read existing manifest
         let manifest_content = fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read jolt.toml: {}", e))?;
 
         let mut manifest: JoltManifest = toml::from_str(&manifest_content)
             .map_err(|e| format!("Failed to parse jolt.toml: {}", e))?;
 
-        // Remove dependency
         if manifest.dependencies.remove(name).is_none() {
             return Err(format!("Dependency '{}' not found", name));
         }
 
-        // Write updated manifest
         let updated_content = toml::to_string_pretty(&manifest)
             .map_err(|e| format!("Failed to serialize updated manifest: {}", e))?;
         fs::write(&manifest_path, updated_content)

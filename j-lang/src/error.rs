@@ -1,4 +1,7 @@
-// Enhanced error messaging system with helpful tips and solutions
+//! Error types and reporting for the J language.
+//!
+//! Provides structured errors with location, tips, solutions, and optional
+//! suggestions (e.g. Levenshtein-based similar names).
 
 use std::fmt;
 

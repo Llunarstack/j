@@ -43,27 +43,27 @@ cargo install --path .
 cargo run -- repl
 ```
 
-## Project Structure
+## Project structure
 
 ```
 j-lang/
-├── src/               # Core implementation
-├── lib/               # Standard library
+├── src/               # Core implementation (lexer, parser, interpreter, …)
+├── stdlib/            # Standard library (.j modules)
+├── doc/               # Design docs, specs, status (see doc/README.md)
 ├── examples/          # Example programs
-├── tests/             # Test suite
-├── docs/              # Documentation
+├── tests/             # Test suite and fixtures
+├── scripts/           # Build / install scripts
 ├── vscode-extension/  # VS Code support
 └── installers/        # Platform installers
 ```
 
 ## Documentation
 
-- `docs/FEATURES.md`
-- `docs/ERROR_HANDLING.md`
-- `docs/ADVANCED_LOOPS.md`
-- `docs/BUILTIN_ALGORITHMS.md`
-- `docs/CRYPTO_FEATURES.md`
-- `docs/MATRIX_FEATURES.md`
+See **`doc/README.md`** for the full index. Highlights:
+
+- `doc/ADVANCED_CLASS_TYPES.md` — Class types (secure, singleton, data, …)
+- `doc/OOB_FEATURES.md` — Out-of-band features (flow, probe, veil, …)
+- `doc/ADVANCED_LOOPS.md`, `doc/BUILTIN_ALGORITHMS.md`, `doc/BOOTSTRAP_STATUS.md`
 
 ## Development
 

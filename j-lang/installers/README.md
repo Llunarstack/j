@@ -341,7 +341,7 @@ After installation:
    - Install
 
 5. **Read documentation:**
-   - See `docs/` folder
+   - See `doc/` folder
    - Visit https://docs.j-lang.org
 
 ---
@@ -367,7 +367,7 @@ After installation:
 
 Need help?
 
-- **Documentation**: `docs/` folder
+- **Documentation**: `doc/` folder
 - **Examples**: `examples/` folder
 - **Issues**: https://github.com/j-lang/j/issues
 - **Discord**: https://discord.gg/j-lang

@@ -1,3 +1,5 @@
+//! JIT execution and hot-reload for J (optional `jit` feature).
+
 #[cfg(feature = "jit")]
 use notify::{watcher, RecursiveMode, Watcher};
 use std::collections::HashMap;

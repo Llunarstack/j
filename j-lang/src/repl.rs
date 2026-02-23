@@ -1,3 +1,5 @@
+//! Interactive REPL for the J language.
+
 use crate::interpreter::Interpreter;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -75,17 +77,14 @@ impl Repl {
     }
 
     fn evaluate(&mut self, input: &str) -> Result<String, String> {
-        // Tokenize
         let mut lexer = Lexer::new(input);
         let tokens = lexer
             .tokenize()
             .map_err(|e| format!("Lexer error: {}", e))?;
 
-        // Parse
         let mut parser = Parser::new(tokens);
         let ast = parser.parse().map_err(|e| format!("Parser error: {}", e))?;
 
-        // Interpret
         let result = self
             .interpreter
             .evaluate(&ast)

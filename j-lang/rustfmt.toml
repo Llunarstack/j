@@ -1,0 +1,4 @@
+# Match .editorconfig: 4 spaces
+edition = "2021"
+tab_spaces = 4
+max_width = 100

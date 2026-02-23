@@ -1,136 +1,121 @@
-# Contributing to J Language
+# Contributing to J
 
-Thank you for your interest in contributing to J! This document provides guidelines for contributing to the project.
+Thank you for contributing to the J programming language. This guide will help you get started.
 
-## Getting Started
+## Table of contents
 
-1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/j.git`
-3. Create a branch: `git checkout -b feature/your-feature-name`
-4. Make your changes
-5. Test your changes: `cargo test`
-6. Commit: `git commit -m "feat: your feature description"`
-7. Push: `git push origin feature/your-feature-name`
-8. Open a Pull Request
+- [Code of conduct](#code-of-conduct)
+- [Getting started](#getting-started)
+- [Development setup](#development-setup)
+- [Making changes](#making-changes)
+- [Submitting changes](#submitting-changes)
+- [Reporting issues](#reporting-issues)
 
-## Development Setup
+## Code of conduct
+
+This project adheres to the [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.
+
+## Getting started
+
+1. **Fork** the repository on GitHub.
+2. **Clone** your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/j.git
+   cd j
+   ```
+3. **Create a branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+   Use a short prefix: `feature/`, `fix/`, `docs/`, `refactor/`, `test/`.
+
+## Development setup
 
 ### Prerequisites
-- Rust 1.70 or higher
-- Cargo
-- Git
 
-### Building
+- **Rust** 1.70 or higher  
+  Install from [rustup.rs](https://rustup.rs).
+- **Cargo** (included with Rust)
+- **Git**
+
+### Build and test
+
+All commands below are run from the **`j-lang`** directory (the main crate).
+
 ```bash
 cd j-lang
 cargo build
-```
-
-### Running Tests
-```bash
 cargo test
-cargo test --all-features
 ```
 
-### Code Style
+### Code quality
+
 ```bash
 cargo fmt
 cargo clippy
 ```
 
-## Project Structure
+CI runs `cargo fmt --check`, `cargo clippy`, and `cargo test` on push and pull requests.
 
-```
-j/
-├── j-lang/           # Core language implementation
-│   ├── src/          # Source code
-│   ├── tests/        # Integration tests
-│   ├── examples/     # Example programs
-│   └── lib/          # Standard library
-├── LICENSE           # MIT License
-└── README.md         # Project overview
-```
+### Project structure
 
-## Commit Message Guidelines
+| Purpose        | Path               |
+|----------------|--------------------|
+| Source         | `j-lang/src/`      |
+| Standard lib   | `j-lang/stdlib/`   |
+| Documentation  | `j-lang/doc/`      |
+| Examples       | `j-lang/examples/` |
+| Tests          | `j-lang/tests/`    |
 
-We follow conventional commits:
+See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the full layout.
+
+## Making changes
+
+### Commit messages
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 - `feat:` New feature
 - `fix:` Bug fix
-- `docs:` Documentation changes
-- `style:` Code style changes (formatting, etc.)
-- `refactor:` Code refactoring
+- `docs:` Documentation only
+- `style:` Formatting, no logic change
+- `refactor:` Code change that is not a fix or feature
 - `test:` Adding or updating tests
-- `chore:` Maintenance tasks
+- `chore:` Build, tooling, or maintenance
 
-Example: `feat: add async/await support`
+Example: `feat: add pipeline operator for list comprehensions`
 
-## Code Guidelines
+### Code guidelines
 
-### Rust Code
-- Follow Rust naming conventions
-- Add documentation comments for public APIs
-- Write tests for new features
-- Keep functions focused and small
-- Use meaningful variable names
+- **Rust:** Follow standard naming and style. Add doc comments for public APIs. Prefer small, focused functions.
+- **J code (examples/tests):** Use clear names and comments; keep examples runnable.
 
-### J Language Code
-- Use clear, descriptive names
-- Add comments for complex logic
-- Follow the style guide in examples
-- Test your code before submitting
+## Submitting changes
 
-## Testing
+1. Ensure tests pass and the code is formatted:
+   ```bash
+   cd j-lang && cargo fmt && cargo clippy && cargo test
+   ```
+2. Update **CHANGELOG.md** for user-visible changes.
+3. Push your branch and open a **Pull Request** against `main` (or `master`).
+4. Fill out the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and link any related issues.
 
-### Writing Tests
-- Add unit tests in the same file as the code
-- Add integration tests in `j-lang/tests/`
-- Add example programs in `j-lang/examples/`
+Maintainers will review and may request changes. Once approved, your PR can be merged.
 
-### Running Specific Tests
-```bash
-cargo test test_name
-cargo test --test integration_test_name
-```
+## Reporting issues
 
-## Pull Request Process
+- **Bugs:** Use the [Bug report](https://github.com/Llunarstack/j/issues/new?template=bug_report.md) template.
+- **Features:** Use the [Feature request](https://github.com/Llunarstack/j/issues/new?template=feature_request.md) template.
+- **Security:** See [SECURITY.md](SECURITY.md); do not report vulnerabilities in public issues.
 
-1. Update documentation if needed
-2. Add tests for new features
-3. Ensure all tests pass
-4. Update CHANGELOG.md
-5. Request review from maintainers
+Include version, OS, and minimal steps or code to reproduce where relevant.
 
-### PR Checklist
-- [ ] Tests pass locally
-- [ ] Code follows style guidelines
-- [ ] Documentation updated
-- [ ] CHANGELOG.md updated
-- [ ] Commit messages follow guidelines
+## Questions
 
-## Reporting Issues
+- Search [existing issues](https://github.com/Llunarstack/j/issues) first.
+- Open a new issue for questions or discussions.
+- Be respectful and constructive.
 
-### Bug Reports
-Include:
-- J version
-- Operating system
-- Steps to reproduce
-- Expected vs actual behavior
-- Code sample if applicable
+---
 
-### Feature Requests
-Include:
-- Clear description
-- Use cases
-- Example syntax (if applicable)
-- Why it would be useful
-
-## Questions?
-
-- Open an issue for questions
-- Check existing issues first
-- Be respectful and constructive
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
