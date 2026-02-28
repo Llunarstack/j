@@ -97,12 +97,18 @@ jobs:
           merge-multiple: true
           path: release-assets
 
+      - name: Flatten release assets into single directory
+        run: |
+          mkdir -p release-files
+          find release-assets -type f -exec cp -v {} release-files/ \;
+          ls -la release-files/
+
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
-          files: release-assets/*
+          files: release-files/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
