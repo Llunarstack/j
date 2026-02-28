@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Forums — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="icon" type="image/png" href="../assets/jade.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+        <a href="forums.html" class="active" data-i18n="nav.forums">Forums</a>
+        <a href="feedback.html" data-i18n="nav.feedback">Feedback</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+        <a href="forums.html">Forums</a>
+        <a href="feedback.html">Feedback &amp; suggestions</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#community">Community</a>
+        <a href="#discussions">GitHub Discussions</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Forums</h1>
+      <p>Connect with other Jade users, share projects, and get help.</p>
+
+      <h2 id="community">Community</h2>
+      <p>Jade community discussions live on GitHub. You can ask questions, share tips, and talk about the language without opening an issue.</p>
+
+      <h2 id="discussions">GitHub Discussions</h2>
+      <p>Use GitHub Discussions for:</p>
+      <ul>
+        <li>How-to questions</li>
+        <li>Show and tell: scripts or ideas built with Jade</li>
+        <li>General chat about the language and roadmap</li>
+      </ul>
+      <p><a href="https://github.com/Llunarstack/Jade-programming-lang/discussions" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Open Discussions</a></p>
+      <p>For bug reports or feature requests, use <a href="feedback.html">Feedback and suggestions</a> (GitHub Issues).</p>
+    </article>
+  </div>
+
+  <footer class="site-footer">
+    <p data-i18n="footer.text">Jade 1.0.0 · Documentation from the interpreter</p>
+  </footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+</body>
+</html>

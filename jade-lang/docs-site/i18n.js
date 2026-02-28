@@ -5,6 +5,8 @@
     en: {
       'nav.docs': 'Documentation',
       'nav.installers': 'Installers',
+      'nav.forums': 'Forums',
+      'nav.feedback': 'Feedback',
       'lang.en': 'English',
       'lang.es': 'Español',
       'lang.fr': 'Français',
@@ -33,6 +35,8 @@
     es: {
       'nav.docs': 'Documentación',
       'nav.installers': 'Instaladores',
+      'nav.forums': 'Foros',
+      'nav.feedback': 'Comentarios',
       'lang.en': 'English',
       'lang.es': 'Español',
       'lang.fr': 'Français',
@@ -61,6 +65,8 @@
     fr: {
       'nav.docs': 'Documentation',
       'nav.installers': 'Installation',
+      'nav.forums': 'Forums',
+      'nav.feedback': 'Commentaires',
       'lang.en': 'English',
       'lang.es': 'Español',
       'lang.fr': 'Français',
@@ -89,6 +95,8 @@
     de: {
       'nav.docs': 'Dokumentation',
       'nav.installers': 'Installation',
+      'nav.forums': 'Foren',
+      'nav.feedback': 'Feedback',
       'lang.en': 'English',
       'lang.es': 'Español',
       'lang.fr': 'Français',
