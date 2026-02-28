@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Functions — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#declaration">Declaration</a>
+        <a href="#untyped-vs-typed">Untyped vs typed parameters</a>
+        <a href="#return-type">Return type</a>
+        <a href="#lambdas">Lambdas</a>
+        <a href="#calling">Calling</a>
+        <a href="#decorators">Decorators</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Functions</h1>
+      <p>Function declarations, lambdas, and calling conventions.</p>
+
+      <h2 id="declaration">Declaration</h2>
+      <p>Syntax: <code>fn [return_type?] | name (params) &gt; body</code>. Body is a block <code>{ }</code> or single expression.</p>
+      <pre><code><span class="fn">fn</span> | greet ( <span class="typ">str</span> | name ) > {
+  <span class="kw">return</span> out(<span class="str">"Hello, "</span> + name)
+}
+
+<span class="fn">fn</span> | add ( <span class="typ">int</span> | a, <span class="typ">int</span> | b ) > { <span class="kw">return</span> a + b }
+
+<span class="fn">fn</span> | one () > { <span class="kw">return</span> <span class="num">1</span> }</code></pre>
+
+      <h2 id="untyped-vs-typed">Untyped vs typed parameters</h2>
+      <ul>
+        <li><strong>Untyped:</strong> <code>(x)</code>, <code>(x, y)</code> — parameter names only.</li>
+        <li><strong>Typed:</strong> <code>(int | x, str | s)</code> — type and name separated by <code>|</code>.</li>
+      </ul>
+
+      <h2 id="return-type">Return type</h2>
+      <p>Optional return type before the pipe: <code>fn int | name (params) &gt; body</code>. Return value: <code>return expr</code> or <code>return</code> (none).</p>
+
+      <h2 id="lambdas">Lambdas</h2>
+      <pre><code><span class="fn">fn</span> | x, y > x + y
+<span class="fn">fn</span> | (a, b) > a * b
+<span class="fn">fn</span> | x > { <span class="kw">return</span> out(x) }</code></pre>
+      <p>Arrow: <code>&gt;</code> for block, <code>=&gt;</code> for expression-style in some contexts.</p>
+
+      <h2 id="calling">Calling</h2>
+      <p><code>name(args)</code>, <code>name()</code>. Method call: <code>obj.method(args)</code>. Pipeline: <code>x |&gt; fn</code> passes <code>x</code> as first argument to <code>fn</code>.</p>
+
+      <h2 id="decorators">Decorators</h2>
+      <p><code>@decorator</code> or <code>@decorator(args)</code> above a function. Built-in decorators: <code>@memo</code> / <code>@cache</code>, <code>@timer</code>, <code>@log_call</code>, <code>@once</code>, <code>@throttle(sec)</code>, <code>@debounce(sec)</code>, <code>@profile</code>, <code>@trace</code>, <code>@deprecated("msg")</code>, <code>@tco</code> (tail-call hint).</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>

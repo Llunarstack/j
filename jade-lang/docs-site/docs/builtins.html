@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Built-in reference — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#output-globals">Output &amp; globals</a>
+        <a href="#core">Core</a>
+        <a href="#variables-inspection">Variables &amp; inspection</a>
+        <a href="#numeric-math">Numeric &amp; math</a>
+        <a href="#number-theory">Number theory</a>
+        <a href="#statistics">Statistics</a>
+        <a href="#strings">Strings</a>
+        <a href="#io">I/O</a>
+        <a href="#algorithms">Algorithms</a>
+        <a href="#data-structures-graphs">Data structures &amp; graphs</a>
+        <a href="#union-find-trie">Union-Find &amp; Trie</a>
+        <a href="#counter-enum">Counter &amp; enum</a>
+        <a href="#bits">Bits</a>
+        <a href="#random">Random</a>
+        <a href="#memo">Memo</a>
+        <a href="#crypto">Crypto</a>
+        <a href="#regex">Regex</a>
+        <a href="#methods">Methods on values</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Built-in reference</h1>
+      <p>All functions and globals provided by the interpreter. This list is generated from the interpreter source.</p>
+
+      <h2 id="output-globals">Output &amp; globals</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>out(...)</code></td><td>Print values. One arg: print and newline. Two args: second can be options dict (progress, animate, gradient, color, style, end). Multiple args: print space-separated then newline.</td></tr>
+          <tr><td><code>PI</code>, <code>TAU</code>, <code>E</code>, <code>PHI</code>, <code>SQRT2</code></td><td>Math constants (float).</td></tr>
+          <tr><td><code>date</code>, <code>time</code>, <code>datetime</code>, <code>graph</code></td><td>Type markers (for type system).</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="core">Core</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>range(n)</code>, <code>range(start, end)</code>, <code>range(start, end, step)</code></td><td>Integer range (list or lazy range).</td></tr>
+          <tr><td><code>len(x)</code></td><td>Length of string, list, dict, range, etc.</td></tr>
+          <tr><td><code>replicate</code> / <code>repeat_n</code></td><td>Repeat value or list n times.</td></tr>
+          <tr><td><code>assert(condition [, message])</code></td><td>Assert condition; panic with message if false.</td></tr>
+          <tr><td><code>iota(n)</code></td><td>List [0, 1, ..., n-1].</td></tr>
+          <tr><td><code>identity</code> / <code>id</code></td><td>Identity function.</td></tr>
+          <tr><td><code>default(value, default)</code></td><td>Return value or default if null/empty.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="variables-inspection">Variables &amp; inspection</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>len(x)</code>, <code>size(x)</code></td><td>Length/size of collection or string.</td></tr>
+          <tr><td><code>type_of(x)</code></td><td>Type name as string.</td></tr>
+          <tr><td><code>is_empty(x)</code></td><td>True if empty.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="numeric-math">Numeric &amp; math</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>abs</code>, <code>sign</code>, <code>min</code>, <code>max</code>, <code>clamp</code>, <code>clamp01</code></td><td>Basic numeric.</td></tr>
+          <tr><td><code>sqrt</code>, <code>cbrt</code>, <code>pow</code></td><td>Powers and roots.</td></tr>
+          <tr><td><code>ceil</code>, <code>floor</code>, <code>round</code>, <code>trunc</code></td><td>Rounding.</td></tr>
+          <tr><td><code>exp</code>, <code>ln</code>, <code>log10</code>, <code>log2</code></td><td>Exponential and log.</td></tr>
+          <tr><td><code>sin</code>, <code>cos</code>, <code>tan</code>, <code>asin</code>, <code>acos</code>, <code>atan</code>, <code>atan2</code></td><td>Trigonometry.</td></tr>
+          <tr><td><code>sinh</code>, <code>cosh</code>, <code>tanh</code></td><td>Hyperbolic.</td></tr>
+          <tr><td><code>hypot</code>, <code>lerp</code></td><td>Distance and interpolation.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="number-theory">Number theory (math)</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>gcd</code>, <code>lcm</code>, <code>egcd</code></td><td>GCD, LCM, extended GCD.</td></tr>
+          <tr><td><code>is_prime</code>, <code>next_prime</code>, <code>prev_prime</code></td><td>Primes.</td></tr>
+          <tr><td><code>factorial</code>, <code>fibonacci</code>, <code>binomial</code></td><td>Combinatorics.</td></tr>
+          <tr><td><code>factors</code>, <code>totient</code></td><td>Factors, Euler totient.</td></tr>
+          <tr><td><code>gamma</code>, <code>polyval</code></td><td>Gamma, polynomial eval.</td></tr>
+          <tr><td><code>mod_add</code>, <code>mod_sub</code>, <code>mod_mul</code>, <code>mod_pow</code>, <code>mod_inv</code></td><td>Modular arithmetic.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="statistics">Statistics</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>mean</code>, <code>median</code>, <code>mode</code></td><td>Central tendency.</td></tr>
+          <tr><td><code>variance</code>, <code>stddev</code></td><td>Spread.</td></tr>
+          <tr><td><code>normal_pdf</code>, <code>normal_cdf</code>, <code>normal_quantile</code></td><td>Normal distribution.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="strings">Strings</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>split</code>, <code>join</code></td><td>Split string / join list.</td></tr>
+          <tr><td><code>substring</code>, <code>upper</code>, <code>lower</code>, <code>trim</code></td><td>Substring and case.</td></tr>
+          <tr><td><code>replace</code>, <code>starts_with</code>, <code>ends_with</code>, <code>repeat</code>, <code>format</code></td><td>Replace and format.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="io">I/O</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>read(path)</code></td><td>Read file as string.</td></tr>
+          <tr><td><code>write(path, content)</code></td><td>Write string to file.</td></tr>
+          <tr><td><code>read_lines(path)</code>, <code>write_lines(path, list)</code></td><td>Lines.</td></tr>
+          <tr><td><code>run(command)</code></td><td>Execute shell command.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="algorithms">Algorithms</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>swap</code>, <code>rotate_left</code>, <code>rotate_right</code></td><td>Array ops.</td></tr>
+          <tr><td><code>count_if</code>, <code>find_index</code>, <code>binary_search</code></td><td>Search.</td></tr>
+          <tr><td><code>sliding_window</code>, <code>partition_range</code>, <code>two_pointers_sum</code></td><td>Patterns.</td></tr>
+          <tr><td><code>flood_fill</code>, <code>lower_bound</code>, <code>upper_bound</code></td><td>More algorithms.</td></tr>
+          <tr><td><code>prefix_sum</code>, <code>kadane</code>, <code>reverse_range</code>, <code>merge_sorted</code></td><td>Classic algos.</td></tr>
+          <tr><td><code>gcd_list</code>, <code>lcm_list</code></td><td>List GCD/LCM.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="data-structures-graphs">Data structures &amp; graphs</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>bfs</code>, <code>dfs</code></td><td>Graph traversal.</td></tr>
+          <tr><td><code>add_node</code>, <code>add_edge</code>, <code>get_neighbors</code></td><td>Graph build/query.</td></tr>
+          <tr><td><code>graph_nodes</code>, <code>graph_edges</code></td><td>Graph inspection.</td></tr>
+          <tr><td><code>topological_sort</code>, <code>dijkstra</code></td><td>Graph algorithms.</td></tr>
+          <tr><td><code>push_front</code>, <code>push_back</code>, <code>pop_front</code>, <code>pop_back</code>, <code>peek_front</code>, <code>peek_back</code></td><td>Deque/queue.</td></tr>
+          <tr><td><code>pq_push</code>, <code>pq_pop</code>, <code>pq_peek</code></td><td>Priority queue.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="union-find-trie">Union-Find &amp; Trie</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>uf_new</code>, <code>uf_find</code>, <code>uf_union</code>, <code>uf_connected</code></td><td>Disjoint set union.</td></tr>
+          <tr><td><code>trie_new</code>, <code>trie_insert</code>, <code>trie_contains</code>, <code>trie_prefix_search</code></td><td>Trie (prefix tree).</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="counter-enum">Counter &amp; enum</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>most_common</code>, <code>total</code></td><td>Counter helpers.</td></tr>
+          <tr><td><code>enum_name</code>, <code>enum_value</code>, <code>enum_has</code></td><td>Enum inspection.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="bits">Bits</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>bit_set</code>, <code>set_bit</code>, <code>clear_bit</code>, <code>toggle_bit</code></td><td>Bit manipulation.</td></tr>
+          <tr><td><code>count_bits</code> / <code>bit_count</code></td><td>Population count.</td></tr>
+          <tr><td><code>leading_zeros</code>, <code>trailing_zeros</code>, <code>highest_set_bit</code>, <code>lowest_set_bit</code></td><td>Bit position.</td></tr>
+          <tr><td><code>is_power_of_two</code>, <code>next_power_of_two</code></td><td>Powers of two.</td></tr>
+          <tr><td><code>log2_floor</code> / <code>ilog2</code>, <code>log2_ceil</code>, <code>exp2</code>, <code>log10_floor</code>, <code>digits</code></td><td>Log/exp and digits.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="random">Random</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>rand()</code></td><td>Float in [0, 1).</td></tr>
+          <tr><td><code>rand_int(lo, hi)</code></td><td>Integer in [lo, hi].</td></tr>
+          <tr><td><code>rand_choice(list)</code></td><td>Random element.</td></tr>
+          <tr><td><code>shuffle(list)</code></td><td>Shuffle in place.</td></tr>
+          <tr><td><code>rand_uniform(a, b)</code></td><td>Uniform float in [a, b].</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="memo">Memo</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>memo(f)</code></td><td>Return a memoized version of function <code>f</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="crypto">Crypto</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>sha256</code>, <code>sha256_hex</code></td><td>SHA-256 hash.</td></tr>
+          <tr><td><code>hmac</code>, <code>secure_eq</code>, <code>secure_compare</code></td><td>HMAC and constant-time compare.</td></tr>
+          <tr><td><code>enigma_keypair</code>, <code>enigma_encrypt</code>, <code>enigma_decrypt</code></td><td>Enigma-style cipher.</td></tr>
+          <tr><td><code>crypto_random_bytes</code>, <code>xor_bytes</code></td><td>Random bytes, XOR.</td></tr>
+          <tr><td><code>aes_encrypt</code>, <code>aes_decrypt</code></td><td>AES encrypt/decrypt.</td></tr>
+          <tr><td><code>derive_password_key</code>, <code>crypto_salt</code>, <code>crypto_nonce</code></td><td>Keys and nonces.</td></tr>
+          <tr><td><code>encrypt_value</code>, <code>decrypt_value</code></td><td>Value encryption.</td></tr>
+          <tr><td><code>password_hash</code>, <code>password_verify</code></td><td>Password hashing.</td></tr>
+          <tr><td><code>encrypt</code>, <code>decrypt</code></td><td>High-level encrypt/decrypt.</td></tr>
+          <tr><td><code>secure_token</code></td><td>Secure random token.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="regex">Regex (optional feature)</h2>
+      <p>Built when the interpreter is compiled with <code>regex</code> feature.</p>
+      <table>
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>regex(pattern)</code>, <code>regex(pattern, flags)</code></td><td>Compile regex.</td></tr>
+          <tr><td><code>regex_email</code>, <code>regex_url</code>, <code>regex_ipv4</code>, <code>regex_uuid</code>, <code>regex_hex_color</code>, <code>regex_semver</code></td><td>Pre-built patterns.</td></tr>
+          <tr><td><code>regex_replace</code>, <code>regex_split</code></td><td>Replace and split.</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="methods">Methods on values</h2>
+      <p>Lists: <code>.len</code>, <code>.push</code>, <code>.pop</code>, <code>.append</code>, <code>.insert</code>, <code>.remove</code>, index/slice. Dicts: <code>.keys</code>, <code>.values</code>, <code>.get</code>, <code>.set</code>. Strings: indexing, slice, <code>.contains</code> (with regex when available). Ranges: <code>.len</code>. Built-in <code>map</code>, <code>filter</code>, <code>reduce</code> work on iterables.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>

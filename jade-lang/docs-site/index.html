@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jade — A modern scripting language</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/png" href="assets/jade.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="index.html" class="logo-wrap">
+        <img src="assets/jade.png" alt="Jade" />
+        <span>Jade</span>
+      </a>
+      <div class="nav-links">
+        <a href="docs/getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="docs/installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <img src="assets/jade.png" alt="" class="hero-logo" />
+      <h1>Jade</h1>
+      <p class="tagline" data-i18n="hero.tagline">Memory. Algorithms. Data structures. Code and tools for engineers who create.</p>
+      <div class="hero-actions">
+        <a href="docs/getting-started.html" class="btn btn-primary" data-i18n="hero.get-started">Get started</a>
+        <a href="docs/reference.html#code-examples" class="btn btn-secondary" data-i18n="hero.browse-code">Browse code</a>
+      </div>
+      <div class="runnable-example hero-runnable">
+        <div class="run-toolbar">
+          <button type="button" class="run-btn" aria-label="Run and show output">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            <span data-i18n="hero.run">Run</span>
+          </button>
+        </div>
+        <pre class="hero-code"><code><span class="com"># Built-in DSA: kadane (max subarray), comprehensions, pipeline</span>
+<span class="kw">list</span>: a = [-<span class="num">2</span>, <span class="num">1</span>, -<span class="num">3</span>, <span class="num">4</span>, -<span class="num">1</span>, <span class="num">2</span>, <span class="num">1</span>]
+out(<span class="str">"Max subarray sum: {kadane(a)}"</span>)
+
+<span class="fn">fn</span> | fib ( <span class="typ">int</span> | n ) > {
+  <span class="kw">if</span> n &lt;= <span class="num">1</span> { <span class="kw">return</span> n }
+  <span class="kw">return</span> fib(n - <span class="num">1</span>) + fib(n - <span class="num">2</span>)
+}
+out(<span class="str">"fib(10) = {fib(10)}"</span>)</code></pre>
+        <div class="run-output">
+          <div class="run-output-label" data-i18n="run.output">Output</div>
+          <pre>Max subarray sum: 6
+fib(10) = 55</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <h2 class="sec-title" data-i18n="features.why">Why Jade?</h2>
+      <p class="sec-subtitle" data-i18n="features.subtitle">One language for scripts, tools, and small binaries. Built-in algorithms and data structures. No runtime to install—just one binary. Pipe-first syntax and optional types keep code short and clear.</p>
+      <div class="feature-grid">
+        <div class="feature">
+          <h3 data-i18n="features.syntax-title">Syntax that scales</h3>
+          <p data-i18n="features.syntax-desc">Pipe-style <code>fn | name (params) > body</code> and optional types: <code>(x, y)</code> or <code>(int | a, str | b)</code>. Less boilerplate, same clarity when you need it.</p>
+        </div>
+        <div class="feature">
+          <h3 data-i18n="features.batteries-title">Batteries included</h3>
+          <p data-i18n="features.batteries-desc">DSA and algorithms built in: <code>kadane</code>, <code>fibonacci</code>, graphs, Union-Find, trie, crypto, regex. Plus <code>out</code>, <code>range</code>, <code>map</code>, <code>filter</code>, and 100+ more. No hunting for libs.</p>
+        </div>
+        <div class="feature">
+          <h3 data-i18n="features.binary-title">One binary, every platform</h3>
+          <p data-i18n="features.binary-desc">Run files, REPL, or build a native executable. <code>jade file.jdl</code>, <code>jade repl</code>, <code>jade build file.jdl -o app</code>. No separate runtime or interpreter install.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="code-showcase">
+      <h2 class="sec-title" data-i18n="showcase.title">Cool features in one place</h2>
+      <p class="sec-subtitle" data-i18n="showcase.subtitle">Match expressions, comprehensions, pipelines, graphs, crypto, and 100+ built-ins. One reference page.</p>
+      <div class="code-tier">
+        <div class="runnable-example code-block-wrap">
+          <div class="run-toolbar">
+            <button type="button" class="run-btn" aria-label="Run and show output">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+              <span data-i18n="hero.run">Run</span>
+            </button>
+          </div>
+          <pre><code><span class="com"># Optional types · interpolation · pipeline</span>
+<span class="fn">fn</span> | double (x) > { <span class="kw">return</span> x * <span class="num">2</span> }
+<span class="kw">int</span>: n = <span class="num">21</span>
+out(n <span class="kw">|&gt;</span> double)
+out(<span class="str">"Sum: {n}"</span>)
+
+<span class="com"># List comprehensions · built-in algo</span>
+<span class="kw">list</span>: sq = [x * x <span class="kw">for</span> x <span class="kw">in</span> [<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>, <span class="num">4</span>]]
+out(kadane([-<span class="num">2</span>, <span class="num">1</span>, -<span class="num">3</span>, <span class="num">4</span>, -<span class="num">1</span>, <span class="num">2</span>, <span class="num">1</span>]))</code></pre>
+          <div class="run-output">
+            <div class="run-output-label" data-i18n="run.output">Output</div>
+            <pre>42
+Sum: 21
+6</pre>
+          </div>
+        </div>
+      </div>
+      <p class="examples-cta">
+        <a href="docs/reference.html" class="btn btn-primary" data-i18n="showcase.cta">Language reference</a>
+      </p>
+    </section>
+
+    <section class="install">
+      <h2 class="sec-title" data-i18n="install.title">Install</h2>
+      <p class="sec-subtitle" data-i18n="install.subtitle">Windows, macOS, or from source.</p>
+      <pre class="install-code"><code># Windows — run installer or portable zip
+jade-1.0.0-windows-x86_64-setup.exe
+
+# From source (all platforms)
+git clone https://github.com/Llunarstack/j
+cd j/jade-lang
+cargo build --release
+# Binary: target/release/jade  (or jade.exe on Windows)</code></pre>
+      <p><a href="docs/installers.html" data-i18n="install.link">Download installers →</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p data-i18n="footer.text">Jade 1.0.0 · Documentation from the interpreter</p>
+  </footer>
+  <script src="script.js"></script>
+  <script src="i18n.js"></script>
+  <script src="easter-egg.js"></script>
+  <script src="run-example.js"></script>
+</body>
+</html>

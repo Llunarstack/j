@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Installers — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="icon" type="image/png" href="../assets/jade.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" class="active" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#v1">Version 1.0.0</a>
+        <a href="#v1-windows">Windows</a>
+        <a href="#v1-macos">macOS</a>
+        <a href="#v1-linux">Linux</a>
+        <a href="#v1-source">From source</a>
+        <a href="#other-versions">Other versions</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Installers</h1>
+      <p class="lead">Download Jade for Windows, macOS, and Linux. Each release version has its own section so you can pick a specific version or the latest.</p>
+
+      <h2 id="v1">Version 1.0.0</h2>
+      <p>Current stable release. Choose your platform below.</p>
+
+      <h3 id="v1-windows">Windows</h3>
+      <p>64-bit (x86_64). Run the setup for a guided install, or use the portable zip to run without installing.</p>
+      <div class="installer-downloads">
+        <a href="../../../dist/installers/windows/jade-1.0.0-windows-x86_64-setup.exe" download class="btn btn-primary installer-btn">Setup (EXE)</a>
+        <a href="../../../dist/installers/windows/jade-1.0.0-windows-x86_64-portable.zip" download class="btn btn-secondary installer-btn">Portable (ZIP)</a>
+      </div>
+      <p class="installer-note">After install, run <code>jade file.jdl</code> or <code>jade repl</code> from the command line. See <a href="getting-started.html">Getting started</a> for usage.</p>
+
+      <h3 id="v1-macos">macOS</h3>
+      <p>Universal (x86_64 and Apple Silicon). Use the install script or the disk image.</p>
+      <div class="installer-downloads">
+        <a href="../../../dist/installers/macos/jade-1.0.0-darwin-universal.tar.gz" download class="btn btn-primary installer-btn">macOS (tar.gz)</a>
+        <a href="../../../dist/installers/macos/jade-1.0.0-darwin-x86_64.pkg" download class="btn btn-secondary installer-btn">macOS x86_64 (PKG)</a>
+        <a href="../../../dist/installers/macos/jade-1.0.0-darwin-aarch64.pkg" download class="btn btn-secondary installer-btn">macOS Apple Silicon (PKG)</a>
+      </div>
+      <p class="installer-note">Or build from source: <code>cd jade-lang && cargo build --release</code>, then run <code>./installers/macos/install.sh</code>.</p>
+
+      <h3 id="v1-linux">Linux</h3>
+      <p>64-bit (x86_64). Choose a package format for your distribution.</p>
+      <div class="installer-downloads">
+        <a href="../../../dist/installers/linux/jade_1.0.0_amd64.deb" download class="btn btn-primary installer-btn">Debian / Ubuntu (.deb)</a>
+        <a href="../../../dist/installers/linux/jade-1.0.0-1.x86_64.rpm" download class="btn btn-secondary installer-btn">Fedora / RHEL (.rpm)</a>
+        <a href="../../../dist/installers/linux/jade-1.0.0-linux-x86_64.tar.gz" download class="btn btn-secondary installer-btn">Portable (tar.gz)</a>
+      </div>
+      <p class="installer-note">Or use the install script from the repo: <code>./installers/linux/install.sh</code> after building.</p>
+
+      <h3 id="v1-source">From source</h3>
+      <p>Build the latest from the repository. Requires <a href="https://rustup.rs/">Rust</a>.</p>
+      <pre><code>git clone https://github.com/Llunarstack/j.git
+cd j/jade-lang
+cargo build --release</code></pre>
+      <p>Binary: <code>target/release/jade</code> (or <code>jade.exe</code> on Windows). For install scripts and PATH setup, see <a href="getting-started.html#installation">Getting started → Installation</a>.</p>
+
+      <h2 id="other-versions">Other versions</h2>
+      <p>Older or pre-release versions are listed on <a href="https://github.com/Llunarstack/j/releases">GitHub Releases</a>. This page will add dedicated sections for future stable versions (e.g. 1.1.0, 2.0.0) as they are released.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>

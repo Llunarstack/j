@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Language reference — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="icon" type="image/png" href="../assets/jade.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#values">Values</a>
+        <a href="#values-intro">Introduction</a>
+        <a href="#primitive-types">Primitive types</a>
+        <a href="#primitive-values">Primitive values</a>
+        <a href="#string-literals">String literals</a>
+        <a href="#escape-sequences">Escape sequences</a>
+        <a href="#assignment">Assignment</a>
+        <a href="#examples-by-type">Examples by type</a>
+        <a href="#output">Output (out)</a>
+        <a href="#output-intro">out() introduction</a>
+        <a href="#basic-out">Basic out()</a>
+        <a href="#output-escapes">Escape sequences in out</a>
+        <a href="#colors-and-styles">Colors and styles</a>
+        <a href="#formatting">Formatting</a>
+        <a href="#tables">Tables</a>
+        <a href="#progress-bar">Progress bar</a>
+        <a href="#animation">Animation</a>
+        <a href="#gradient">Gradient</a>
+        <a href="#code-examples">Code examples</a>
+        <a href="#basic">Basic</a>
+        <a href="#operators">Operators</a>
+        <a href="#data">Data structures</a>
+        <a href="#code-strings">Strings &amp; built-ins</a>
+        <a href="#control">Control flow</a>
+        <a href="#functions-advanced">Functions advanced</a>
+        <a href="#comprehensions">Comprehensions</a>
+        <a href="#math-algo">Math &amp; algorithms</a>
+        <a href="#numeric-builtins">Numeric builtins</a>
+        <a href="#bits-builtins">Bits builtins</a>
+        <a href="#core-builtins">Core builtins</a>
+        <a href="#random-builtins">Random builtins</a>
+        <a href="#more-examples">More examples</a>
+        <a href="#reference-summary">CLI &amp; grammar</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Language reference</h1>
+      <p class="lead">Values, output, and code from basic to advanced — all on one page. Use your browser’s search to find a topic.</p>
+
+      <!-- ========== VALUES ========== -->
+      <h2 id="values">Values</h2>
+      <div class="def-and-usage">
+        <strong>Definition and Usage.</strong> Every value in Jade has a type. You can declare variables with an optional type (<code>int: x = 42</code>) or let the interpreter infer it (<code>x = 42</code>). Top-level declarations are order-independent.
+      </div>
+
+      <h3 id="values-intro">Introduction</h3>
+      <p>Jade is dynamically typed. Types include integers, floats, strings, booleans, characters, lists, dicts, tuples, ranges, and specials like <code>inf</code>, dates, and money.</p>
+
+      <h3 id="primitive-types">Primitive types</h3>
+      <table class="ref-table">
+        <thead><tr><th>Type</th><th>Description</th><th>Example literal</th></tr></thead>
+        <tbody>
+          <tr><td><code>int</code></td><td>Signed integer</td><td><code>42</code>, <code>-1</code>, <code>0</code></td></tr>
+          <tr><td><code>float</code></td><td>Double-precision float</td><td><code>3.14</code>, <code>1e-2</code>, <code>-0.5</code></td></tr>
+          <tr><td><code>str</code></td><td>UTF-8 string</td><td><code>"hello"</code>, <code>""</code></td></tr>
+          <tr><td><code>bool</code></td><td>Boolean</td><td><code>true</code>, <code>false</code></td></tr>
+          <tr><td><code>char</code></td><td>Single character</td><td><code>'a'</code>, <code>' '</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="primitive-values">Primitive values</h3>
+      <table class="ref-table">
+        <thead><tr><th>Name</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>true</code> and <code>false</code></td><td>Boolean values</td></tr>
+          <tr><td><code>none</code></td><td>Absence of a value (optional / no return)</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="string-literals">String literals</h3>
+      <p>Double-quoted: <code>"hello"</code>. Interpolation: <code>"Sum: {total}"</code>. Format specs: <code>{x:.2f}</code>, <code>{name:>10}</code> (see <a href="#formatting">Formatting</a>).</p>
+
+      <h3 id="escape-sequences">Escape sequences</h3>
+      <p>In double-quoted strings:</p>
+      <table class="ref-table">
+        <thead><tr><th>Escape</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>\n</code></td><td>Newline</td></tr>
+          <tr><td><code>\t</code></td><td>Tab</td></tr>
+          <tr><td><code>\r</code></td><td>Carriage return</td></tr>
+          <tr><td><code>\\</code> <code>\"</code> <code>\'</code></td><td>Backslash, double quote, single quote</td></tr>
+          <tr><td><code>\a</code> <code>\b</code> <code>\f</code> <code>\v</code> <code>\0</code> <code>\?</code> <code>\e</code></td><td>Bell, backspace, form feed, vertical tab, null, ?, ESC</td></tr>
+          <tr><td><code>\xHH</code></td><td>Hex byte (2 hex digits)</td></tr>
+          <tr><td><code>\U{HHHHHH}</code></td><td>Unicode code point (1–6 hex digits)</td></tr>
+          <tr><td><code>\c{name}</code></td><td>ANSI: red, green, yellow, blue, magenta, cyan, white, bold, dim, ul, reset</td></tr>
+          <tr><td><code>\emoji{name}</code></td><td>Emoji: fire, heart, sparkles, rocket, star, thumbs_up, smile, check, cross, warning, etc.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="assignment">Assignment</h3>
+      <p class="syntax-label">Syntax</p>
+      <pre><code>type: name = value   <span class="com"># With type</span>
+name = value         <span class="com"># Inferred</span></code></pre>
+      <p class="example-heading">Example</p>
+      <pre><code><span class="typ">int</span>: n = <span class="num">42</span>
+<span class="typ">str</span>: name = <span class="str">"Jade"</span>
+<span class="typ">float</span>: x = <span class="num">3.14</span>
+<span class="typ">bool</span>: ok = true
+<span class="typ">list</span>: xs = [<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>]
+<span class="typ">dict</span>: d = { <span class="str">"a"</span>: <span class="num">1</span>, <span class="str">"b"</span>: <span class="num">2</span> }
+
+<span class="com"># Inferred (no type):</span>
+n = <span class="num">42</span>
+name = <span class="str">"Jade"</span>
+xs = [<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>]</code></pre>
+
+      <h3 id="examples-by-type">Examples by type</h3>
+      <h4 id="integers">Integers</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code><span class="typ">int</span>: a = <span class="num">0</span>
+<span class="typ">int</span>: b = <span class="num">42</span>
+<span class="typ">int</span>: c = -<span class="num">7</span>
+out(a)
+out(b + c)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>0
+35</pre>
+        </div>
+      </div>
+      <h4 id="floats">Floats</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code><span class="typ">float</span>: pi = <span class="num">3.14</span>
+<span class="typ">float</span>: e = <span class="num">2.71828</span>
+<span class="typ">float</span>: small = <span class="num">1e-5</span>
+out(pi)
+out(e * <span class="num">2</span>)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>3.14
+5.43656</pre>
+        </div>
+      </div>
+      <h4 id="booleans">Booleans</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code><span class="typ">bool</span>: yes = true
+<span class="typ">bool</span>: no = false
+out(yes and no)
+out(yes or no)
+out(not no)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>false
+true
+true</pre>
+        </div>
+      </div>
+      <h4 id="strings">Strings</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code><span class="typ">str</span>: greeting = <span class="str">"Hello, Jade"</span>
+<span class="typ">str</span>: with_escape = <span class="str">"Line 1\nLine 2\tTab"</span>
+out(greeting)
+<span class="typ">int</span>: total = <span class="num">10</span>
+out(<span class="str">"Sum: {total}"</span>)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Hello, Jade
+Sum: 10</pre>
+        </div>
+      </div>
+      <h4 id="chars">Characters</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>char: letter = 'a'
+char: space = ' '
+out(letter)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>a</pre>
+        </div>
+      </div>
+      <h4 id="lists">Lists</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>list: nums = [1, 2, 3]
+list: mixed = [1, "two", true]
+list: empty = []
+out(len(nums))
+out(nums[0])
+out(nums[1:3])</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>3
+1
+[2, 3]</pre>
+        </div>
+      </div>
+      <h4 id="dicts">Dicts</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>dict: d = { "a": 1, "b": 2, "c": 3 }
+out(d["a"])
+out(keys(d))
+out(has(d, "b"))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>1
+["a", "b", "c"]
+true</pre>
+        </div>
+      </div>
+      <h4 id="tuples">Tuples</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>tuple: t = (1, "hello", true)
+out(t)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>(1, "hello", true)</pre>
+        </div>
+      </div>
+      <h4 id="ranges">Ranges</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>list: r = range(0, 5)
+list: steps = range(0, 10, 2)
+out(r)
+out(steps)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>[0, 1, 2, 3, 4]
+[0, 2, 4, 6, 8]</pre>
+        </div>
+      </div>
+      <h4 id="special">Special literals</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>float: pos_inf = inf
+float: neg_inf = -inf
+out(pos_inf)
+out(neg_inf)
+
+fn | no_return () > { out("done") }
+out(no_return())   # none</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>inf
+-inf
+done
+none</pre>
+        </div>
+      </div>
+      <p>Other types (set, counter, date, time, money, hex, etc.) use built-ins or constructors. See <a href="types.html">Types &amp; literals</a> and <a href="builtins.html">Built-in reference</a>.</p>
+
+      <!-- ========== OUTPUT ========== -->
+      <h2 id="output">Output (out)</h2>
+      <div class="def-and-usage">
+        <strong>Definition and Usage.</strong> <code>out()</code> prints to stdout. It supports plain values, multiple arguments, ANSI colors and styles, tables, progress bars, animations, and gradient text. Use <code>out(x)</code> to print one value with a newline, or <code>out(a, b, c)</code> to print several space-separated, or <code>out(text, options)</code> for styled output.
+      </div>
+
+      <h3 id="output-intro">Syntax</h3>
+      <pre><code>out(value)
+out(a, b, c)
+out(text, { "color": "red", "style": "bold", "progress": 50, "animate": "spinner", "gradient": ["#00ff00", "#ff0000"] })</code></pre>
+
+      <h3 id="basic-out">Basic out()</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out("Hello, Jade")
+out(42)
+out(3.14)
+out(true)
+out([1, 2, 3])
+out("A", "B", "C")   # A B C</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Hello, Jade
+42
+3.14
+true
+[1, 2, 3]
+A B C</pre>
+        </div>
+      </div>
+
+      <h3 id="output-escapes">Escape sequences</h3>
+      <p>Strings to <code>out()</code> honor the same escapes as above (<a href="#escape-sequences">Escape sequences</a>).</p>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out("Line 1\nLine 2")
+out("\c{green}OK\c{reset}")
+out("\emoji{rocket} Launch")</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Line 1
+Line 2
+OK   (green in terminal)
+🚀 Launch</pre>
+        </div>
+      </div>
+
+      <h3 id="colors-and-styles">Colors and styles</h3>
+      <p><code>out(text, options)</code> with dict:</p>
+      <table class="ref-table">
+        <thead><tr><th>Option</th><th>Values</th></tr></thead>
+        <tbody>
+          <tr><td><code>color</code></td><td>red, green, yellow, blue, magenta, cyan, white</td></tr>
+          <tr><td><code>style</code></td><td>bold, dim, underline, blink</td></tr>
+          <tr><td><code>end</code></td><td>String after text (default <code>"\n"</code>). Use <code>""</code> for no newline.</td></tr>
+        </tbody>
+      </table>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out("Error message", { "color": "red" })
+out("Bold title", { "style": "bold" })
+out("No newline", { "end": "" })</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Error message   (red in terminal)
+Bold title      (bold in terminal)
+No newline      (no newline after)</pre>
+        </div>
+      </div>
+
+      <h3 id="formatting">Formatting</h3>
+      <p>First arg string with <code>{}</code>, second arg dict: <code>{name}</code> replaced by value. Specs: <code>{name:>N}</code> right-align, <code>{name:<N}</code> left-align, <code>{name:.2f}</code> float with 2 decimals.</p>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>str: user = "Jade"
+int: count = 42
+out("User: {user}, count: {count}", { "user": user, "count": count })
+out("Right: {x:>10}", { "x": 123 })
+out("Float: {pi:.2f}", { "pi": 3.14159 })</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>User: Jade, count: 42
+Right:        123
+Float: 3.14</pre>
+        </div>
+      </div>
+
+      <h3 id="tables">Tables</h3>
+      <p>List of lists → text table. With options: <code>header</code> (bool), <code>align</code> (left, right, center), <code>color</code>.</p>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>list: rows = [
+  ["Name", "Score"],
+  ["Alice", "100"],
+  ["Bob", "85"]
+]
+out(rows)
+out(rows, { "header": true, "align": "center", "color": "cyan" })</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Name    Score
+Alice   100
+Bob     85
+
+  Name    Score
+ Alice    100
+  Bob      85</pre>
+        </div>
+      </div>
+
+      <h3 id="progress-bar">Progress bar</h3>
+      <p>Options: <code>progress</code> (0–100), <code>width</code> (default 40), <code>color</code>.</p>
+      <pre><code>out("Loading", { "progress": 75, "width": 40, "color": "green" })</code></pre>
+
+      <h3 id="animation">Animation</h3>
+      <p>Options: <code>animate</code> (spinner, dots), <code>interval</code> (seconds), <code>count</code> (iterations).</p>
+      <pre><code>out("Working", { "animate": "spinner", "interval": 0.1, "count": 20 })</code></pre>
+
+      <h3 id="gradient">Gradient</h3>
+      <p>Options: <code>gradient</code> (list of hex colors).</p>
+      <pre><code>out("Gradient text", { "gradient": ["#00ff00", "#0088ff", "#ff00ff"] })</code></pre>
+
+      <!-- ========== CODE EXAMPLES ========== -->
+      <h2 id="code-examples">Code examples</h2>
+      <p>Every construct from the interpreter, from basic to advanced. All code is valid Jade.</p>
+
+      <h3 id="basic">Basic</h3>
+      <h4>Literals</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(42)
+out(3.14)
+out(true)
+out("hello")
+out([1, 2, 3])
+out({"a": 1, "b": 2})
+out((1, 2))
+out(range(0, 5))
+out(inf)
+out(-inf)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>42
+3.14
+true
+hello
+[1, 2, 3]
+{"a": 1, "b": 2}
+(1, 2)
+[0, 1, 2, 3, 4]
+inf
+-inf</pre>
+        </div>
+      </div>
+      <pre><code># Also: 'x' (char), 1..10, 1..&lt;10 (range literals), #0xFF (hex), $1.50 (money)</code></pre>
+      <h4>Variables and output</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>int: n = 0
+str: s = "hi"
+list: xs = [1, 2, 3]
+dict: d = {}
+
+out("Hello")
+out("Sum: " + n)
+out("Sum: {n}")   # interpolation</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Hello
+Sum: 0
+Sum: 0</pre>
+        </div>
+      </div>
+      <h4>Simple functions</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>fn | add_one (x) > { return x + 1 }
+fn | add (int | a, int | b) > { return a + b }
+fn | greet (str | name) > {
+  return out("Hello, " + name)
+}
+greet("Jade")
+out(add(2, 3))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Hello, Jade
+5</pre>
+        </div>
+      </div>
+      <h4>if / else</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>int: n = 0
+if n > 0 {
+  out("positive")
+} else if n < 0 {
+  out("negative")
+} else {
+  out("zero")
+}</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>zero</pre>
+        </div>
+      </div>
+      <pre><code>if done : return result   # one-liner</code></pre>
+      <h4>for loop</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>for x in [1, 2, 3] { out(x) }
+int: total = 0
+for x in [1, 2, 3] { total = total + x }
+out("Sum: {total}")</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>1
+2
+3
+Sum: 6</pre>
+        </div>
+      </div>
+
+      <h3 id="operators">Operators</h3>
+      <p>Arithmetic, comparison, logical, bitwise, and pipeline.</p>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(10 + 3)
+out(10 - 3)
+out(10 * 3)
+out(10 / 3)
+out(10 % 3)
+out(2 ** 10)
+out(5 == 5)
+out(5 != 3)
+out(5 &lt; 10)
+out(true and false)
+out(true or false)
+out(not false)
+out(6 & 3)
+out(6 | 3)
+out(6 ^ 3)
+out(1 &lt;&lt; 4)
+out(16 &gt;&gt; 2)
+fn | double (x) > { return x * 2 }
+out(21 |&gt; double)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>13
+7
+30
+3.3333333333333335
+1
+1024
+true
+true
+true
+false
+true
+true
+2
+7
+5
+16
+4
+42</pre>
+        </div>
+      </div>
+      <pre><code># Summary
+a + b   a - b   a * b   a / b   a % b   a ** b
+a == b   a != b   a &lt; b   a &gt; b   a &lt;= b   a &gt;= b   a ~== b
+a and b   a or b   not x
+a & b   a | b   a ^ b   a &lt;&lt; n   a &gt;&gt; n   ~x
+x |&gt; fn   # pipeline</code></pre>
+
+      <h3 id="data">Data: list, dict, index, slice</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>list: a = [10, 20, 30]
+out(a[0])
+out(a[1:3])
+out(a[0:4:2])
+
+dict: d = {"a": 1, "b": 2}
+out(d["a"])
+list: k = keys(d)
+list: v = values(d)
+out(has(d, "a"))
+out(len(d))
+
+list: r = range(0, 5)
+list: rev = reverse(a)
+list: taken = take(a, 2)
+list: dropped = drop(a, 2)
+list: cat = append(a, [40, 50])
+out(sum(a))
+out(min(1, 2, 3))
+out(max(1, 2, 3))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>10
+[20, 30]
+[10, 30]
+
+1
+true
+2
+
+[0, 1, 2, 3, 4]
+[30, 20, 10]
+[10, 20]
+[30]
+[10, 20, 30, 40, 50]
+60
+1
+3</pre>
+        </div>
+      </div>
+
+      <h3 id="code-strings">Strings and built-ins</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>str: s = "a,b,c"
+list: parts = split(s, ",")
+out(join(parts, "-"))
+out(upper("hello"))
+out(lower("WORLD"))
+out(trim("  hi  "))
+out(substring("hello", 1, 4))
+out(replace("foo", "o", "x"))
+out(starts_with("hello", "he"))
+out(ends_with("hello", "lo"))
+out(repeat("ab", 3))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>a-b-c
+HELLO
+world
+hi
+ell
+fxx
+true
+true
+ababab</pre>
+        </div>
+      </div>
+
+      <h3 id="control">Control flow (full)</h3>
+      <h4>match</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>int: x = 2
+match x {
+  case 1 > out("one")
+  case 2 > out("two")
+  else > out("other")
+}</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>two</pre>
+        </div>
+      </div>
+      <h4>cond</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>int: v = 1
+cond v {
+  case 0 > out("zero")
+  case 1 > out("one")
+}</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>one</pre>
+        </div>
+      </div>
+      <h4>for (index, char) in string</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>for (i, c) in "hi" {
+  out(i + ": " + c)
+}</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>0: h
+1: i</pre>
+        </div>
+      </div>
+      <h4>try / catch / finally</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>try {
+  out("trying")
+  int: x = 1
+  int: y = 0
+  out(x / y)
+} catch err {
+  out("Error: " + err)
+} finally {
+  out("done")
+}</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>trying
+Error: division by zero
+done</pre>
+        </div>
+      </div>
+      <h4>when</h4>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>when</code> matches a value against string (or other) cases. Use it for multi-way dispatch on a single value.</div>
+      <p class="syntax-label">Syntax</p>
+      <pre><code>when value { case "a" > expr; case "b" > expr }</code></pre>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>str: cmd = "start"
+when cmd {
+  case "start" > out("Starting...")
+  case "stop" > out("Stopping...")
+  case "pause" > out("Paused")
+}</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>Starting...</pre>
+        </div>
+      </div>
+
+      <h4>unless</h4>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>unless</code> runs a block only when the condition is false. Opposite of <code>if</code>.</div>
+      <p class="syntax-label">Syntax</p>
+      <pre><code>unless condition { statements }</code></pre>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>bool: done = false
+unless done { out("Still working...") }
+done = true
+unless done { out("Done") }
+out("Finished")</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>Still working...
+Finished</pre>
+        </div>
+      </div>
+
+      <h4>either</h4>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>either</code> matches a value with pipeline-style cases (<code>|&gt; value &gt; expr</code>). Handy for boolean or enum-like choices.</div>
+      <p class="syntax-label">Syntax</p>
+      <pre><code>either value { |> val1 > expr; |> val2 > expr }</code></pre>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>bool: ok = true
+either ok {
+  |> true  > out("Yes")
+  |> false > out("No")
+}</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>Yes</pre>
+        </div>
+      </div>
+
+      <h4>while</h4>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>while</code> repeats a block while the condition is true. Use for countdowns or until a flag changes.</div>
+      <p class="syntax-label">Syntax</p>
+      <pre><code>while condition { statements }</code></pre>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>int: n = 3
+while n > 0 {
+  out("Count: " + n)
+  n = n - 1
+}
+out("Go!")</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>Count: 3
+Count: 2
+Count: 1
+Go!</pre>
+        </div>
+      </div>
+
+      <pre><code>defer cleanup()
+panic("fatal")
+guard n >= 0 > return 0
+return factorial(n - 1) * n</code></pre>
+
+      <h3 id="functions-advanced">Functions: lambdas, pipeline, decorators</h3>
+      <h4>Lambdas and pipeline</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>fn | add (x, y) > x + y
+fn | double (x) > x * 2
+out(add(10, 5))
+out(7 |&gt; double)
+list: xs = [1, 2, 3]
+list: doubled = map(xs, fn | x > x * 2)
+out(doubled)
+out([1, 2, 3] |&gt; map(fn | x > x + 1))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>15
+14
+[2, 4, 6]
+[2, 3, 4]</pre>
+        </div>
+      </div>
+      <h4>@memo (memoized fib)</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>@memo
+fn | fib (int | n) > {
+  if n <= 1 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+out(fib(10))
+out(fib(15))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>55
+610</pre>
+        </div>
+      </div>
+      <pre><code>@once
+fn | init () > { ... }
+
+@deprecated("use new_api()")
+fn | old_api () > { ... }</code></pre>
+
+      <h3 id="comprehensions">Comprehensions and iteration</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>list: sq = [x * x for x in [1, 2, 3, 4]]
+list: evens = [x for x in [1, 2, 3, 4, 5, 6] if x % 2 == 0]
+list: chars = [c for c in "hello"]
+out(sq)
+out(evens)
+out(chars)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>[1, 4, 9, 16]
+[2, 4, 6]
+["h", "e", "l", "l", "o"]</pre>
+        </div>
+      </div>
+      <pre><code>for x in list rev { ... }
+for x in list step 2 { ... }
+for x in list where x > 0 { ... }
+for (a, b) in zip(list1, list2) { ... }</code></pre>
+
+      <h3 id="math-algo">Math and algorithms</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(gcd(12, 18))
+out(lcm(4, 6))
+out(is_prime(17))
+out(factorial(5))
+out(fibonacci(10))
+
+out(mean([1, 2, 3, 4, 5]))
+out(median([1, 2, 3, 4, 5]))
+out(stddev([1, 2, 3, 4, 5]))
+
+out(binary_search([1, 2, 3, 4], 3))
+out(prefix_sum([1, 2, 3, 4]))
+out(kadane([-2, 1, -3, 4, -1, 2, 1]))
+out(merge_sorted([1, 3], [2, 4]))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>6
+12
+true
+120
+55
+
+3
+3
+1.4142135623730951
+
+2
+[1, 3, 6, 10]
+6
+[1, 2, 3, 4]</pre>
+        </div>
+      </div>
+
+      <h3 id="graphs-dsa">Graphs and data structures</h3>
+      <h4>Graph: bfs, dfs</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>graph: g = {"A": [("B", 1.0)], "B": [("C", 1.0)], "C": []}
+out(bfs(g, "A"))
+out(dfs(g, "A"))
+out(get_neighbors(g, "B"))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>["A", "B", "C"]
+["A", "B", "C"]
+["C"]</pre>
+        </div>
+      </div>
+      <h4>Union-Find</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>u = uf_new(5)
+u = uf_union(u, 0, 1)
+u = uf_union(u, 1, 2)
+u, r0 = uf_find(u, 0)
+u, r2 = uf_find(u, 2)
+out(r0)
+out(r2)
+out(uf_connected(u, 0, 2))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>0
+0
+true</pre>
+        </div>
+      </div>
+      <h4>Trie</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>trie: t = trie_new()
+t = trie_insert(t, "hello")
+t = trie_insert(t, "hey")
+t = trie_insert(t, "hi")
+out(trie_contains(t, "hello"))
+out(trie_contains(t, "he"))
+out(trie_prefix_search(t, "he"))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>true
+false
+["hello", "hey"]</pre>
+        </div>
+      </div>
+      <h4>Deque</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>deque: d = [10, 20]
+d = push_back(d, 30)
+out(peek_front(d))
+d = pop_front(d)
+out(peek_back(d))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>10
+30</pre>
+        </div>
+      </div>
+      <h4>Priority queue</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>priorityq: pq = [(2, "low"), (10, "high"), (5, "mid")]
+pq = pq_push(pq, 1, "min")
+out(pq_peek(pq))
+pq = pq_pop(pq)
+out(pq_peek(pq))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>min
+low</pre>
+        </div>
+      </div>
+
+      <h3 id="numeric-builtins">Numeric builtins</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(abs(-7))
+out(floor(3.7))
+out(ceil(3.2))
+out(round(3.5))
+out(sqrt(16))
+out(pow(2, 10))
+out(sin(0))
+out(cos(0))
+out(clamp(15, 0, 10))
+out(lerp(0, 10, 0.5))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>7
+3
+4
+4
+4
+1024
+0
+1
+10
+5</pre>
+        </div>
+      </div>
+
+      <h3 id="bits-builtins">Bits builtins</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(count_bits(15))
+out(leading_zeros(1))
+out(trailing_zeros(8))
+out(is_power_of_two(8))
+out(next_power_of_two(5))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>4
+63
+3
+true
+8</pre>
+        </div>
+      </div>
+
+      <h3 id="core-builtins">Core builtins</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(iota(5))
+out(replicate(3, "x"))
+out(identity(42))
+out(type_of("hello"))
+out(type_of([1, 2, 3]))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>[0, 1, 2, 3, 4]
+["x", "x", "x"]
+42
+str
+list</pre>
+        </div>
+      </div>
+
+      <h3 id="random-builtins">Random builtins</h3>
+      <p>Output varies each run. <code>rand()</code> returns 0–1, <code>rand_int(lo, hi)</code> is inclusive, <code>rand_choice(list)</code> picks one element, <code>shuffle(list)</code> returns a new shuffled list.</p>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(rand())
+out(rand_int(1, 6))
+out(rand_choice([10, 20, 30]))
+list: xs = [1, 2, 3, 4]
+out(shuffle(xs))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>0.123456
+4
+20
+[3, 1, 4, 2]</pre>
+        </div>
+      </div>
+
+      <h3 id="crypto">Crypto</h3>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>out(sha256_hex("hello"))
+# hmac, secure_eq, secure_compare
+# enigma_keypair, enigma_encrypt, enigma_decrypt
+# aes_encrypt, aes_decrypt
+# password_hash, password_verify
+# encrypt_value, decrypt_value
+# encrypt, decrypt, secure_token</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824</pre>
+        </div>
+      </div>
+
+      <h3 id="io">I/O</h3>
+      <pre><code>str: content = read("file.txt")
+write("out.txt", content)
+list: lines = read_lines("file.txt")
+write_lines("out.txt", lines)
+run("echo hello")</code></pre>
+
+      <h3 id="enum-class">Enum and class</h3>
+      <h4>Enum</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>enum | Color {
+  Red = 0
+  Green = 1
+  Blue = 2
+}
+out(Color.Red)
+out(enum_name(Color, Color.Green))
+out(enum_value(Color, "Blue"))
+out(enum_has(Color, Color.Red))</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>Color.Red
+Green
+2
+true</pre>
+        </div>
+      </div>
+      <h4>Class</h4>
+      <div class="example-block">
+        <div class="example-code">
+          <div class="example-label">Code</div>
+          <pre><code>class | Point {
+  int | x
+  int | y
+  fn | add (Point | other) > {
+    return Point.new(x + other.x, y + other.y)
+  }
+}
+Point p = Point.new(1, 2)
+Point q = Point.new(3, 4)
+out(p.x)
+out(p.y)
+Point r = p.add(q)
+out(r.x)
+out(r.y)</code></pre>
+        </div>
+        <div class="example-output">
+          <div class="example-output-label">Output</div>
+          <pre>1
+2
+4
+6</pre>
+        </div>
+      </div>
+
+      <h2 id="more-examples">More examples: lists, dicts, sets, stats, algo, I/O</h2>
+
+      <h3 id="list-methods">List methods (push, pop, insert, remove)</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>push(list, item)</code> returns a new list with the item at the end. <code>pop(list)</code> returns the last element (the list is consumed). <code>insert(list, index, item)</code> returns a new list with the item at index. Use method style too: <code>list.push(x)</code>, <code>list.pop()</code>, <code>list.append(other_list)</code>.</div>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>list: a = [10, 20]
+a = push(a, 30)
+out(a)
+a = insert(a, 1, 15)
+out(a)
+int: last = pop(a)
+out(last)
+list: b = [1, 2]
+list: c = append(b, [3, 4])
+out(c)</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>[10, 20, 30]
+[10, 15, 20, 30]
+30
+[1, 2, 3, 4]</pre>
+        </div>
+      </div>
+
+      <h3 id="dict-methods">Dict methods (get, merge, update)</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> Use <code>get(dict, key [, default])</code> to safely get a value. <code>merge(d, e)</code> returns a new dict with both keys; <code>update(d, e)</code> merges <code>e</code> into <code>d</code>.</div>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>dict: d = {"a": 1, "b": 2}
+out(get(d, "a"))
+out(get(d, "z", 99))
+dict: e = {"b": 20, "c": 3}
+out(merge(d, e))</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>1
+99
+{"a": 1, "b": 20, "c": 3}</pre>
+        </div>
+      </div>
+
+      <h3 id="set-operations">Set operations (union, intersect, difference)</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>union(a, b)</code>, <code>intersect(a, b)</code>, <code>difference(a, b)</code>, and <code>symmetric_diff(a, b)</code> work on lists (or set-like lists).</div>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>list: a = [1, 2, 3]
+list: b = [2, 3, 4]
+out(union(a, b))
+out(intersect(a, b))
+out(difference(a, b))
+out(symmetric_diff(a, b))</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>[1, 2, 3, 4]
+[2, 3]
+[1]
+[1, 4]</pre>
+        </div>
+      </div>
+
+      <h3 id="stats-more">Statistics (variance, mode)</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>variance(list)</code> and <code>stddev(list)</code> measure spread. <code>mode(list)</code> returns the most frequent value.</div>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>list: xs = [2, 4, 4, 4, 5, 5, 7]
+out(variance(xs))
+out(stddev(xs))
+out(mode(xs))</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>2.0
+1.4142135623730951
+4</pre>
+        </div>
+      </div>
+
+      <h3 id="algo-more">Algorithm helpers (swap, rotate_left, find_index)</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>swap(list, i, j)</code> swaps two elements. <code>rotate_left(list, k)</code> rotates the list left. <code>find_index(list, value)</code> returns the first index or -1.</div>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>list: a = [10, 20, 30]
+out(swap(a, 0, 2))
+out(rotate_left([1, 2, 3, 4], 2))
+out(find_index([10, 20, 30], 20))
+out(find_index([10, 20], 99))</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>[30, 20, 10]
+[3, 4, 1, 2]
+1
+-1</pre>
+        </div>
+      </div>
+
+      <h3 id="counter-example">Counter</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> A <code>counter</code> counts occurrences. Create with <code>counter: c = "aab"</code> or <code>counter: c = [1,1,2,2,2]</code>. Use <code>most_common(c)</code> or <code>c.elements</code>.</div>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>counter: c = "hello"
+out(most_common(c))
+out(size(c))</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>[["l", 2], ["h", 1], ["e", 1], ["o", 1]]
+4</pre>
+        </div>
+      </div>
+
+      <h3 id="io-example">I/O (read, write, read_lines, write_lines)</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>read(path)</code> returns the file as a string. <code>write(path, content)</code> writes a string. <code>read_lines(path)</code> and <code>write_lines(path, list)</code> work line-by-line. <code>run(cmd)</code> runs a shell command.</div>
+      <p class="syntax-label">Syntax</p>
+      <pre><code>str: content = read("file.txt")
+write("out.txt", content)
+list: lines = read_lines("file.txt")
+write_lines("out.txt", lines)
+run("echo hello")</code></pre>
+      <div class="example-block">
+        <div class="example-code"><div class="example-label">Code</div>
+          <pre><code>write("tmp_jade_demo.txt", "Hello from Jade")
+str: s = read("tmp_jade_demo.txt")
+out(s)
+list: lines = read_lines("tmp_jade_demo.txt")
+out(lines)</code></pre>
+        </div>
+        <div class="example-output"><div class="example-output-label">Output</div>
+          <pre>Hello from Jade
+["Hello from Jade"]</pre>
+        </div>
+      </div>
+
+      <h3 id="progress-animation-gradient">Progress bar, animation, gradient</h3>
+      <div class="def-and-usage"><strong>Definition and Usage.</strong> <code>out(text, options)</code> accepts <code>progress</code> (0–100), <code>animate</code> (e.g. "spinner", "dots"), and <code>gradient</code> (list of hex colors) for styled terminal output.</div>
+      <p class="syntax-label">Example (progress)</p>
+      <pre><code>out("Loading", { "progress": 75, "width": 40, "color": "green" })</code></pre>
+      <p class="syntax-label">Example (animation)</p>
+      <pre><code>out("Working", { "animate": "spinner", "interval": 0.1, "count": 20 })</code></pre>
+      <p class="syntax-label">Example (gradient text)</p>
+      <pre><code>out("Jade", { "gradient": ["#00ff00", "#0088ff", "#ff00ff"] })</code></pre>
+      <p>In a terminal, these show a progress bar, a short spinner animation, and colored gradient text respectively.</p>
+
+      <h3 id="keywords">Keywords</h3>
+      <p>Reserved: fn class if else match case while for in break continue return yield defer try catch finally panic use import let static enum trait async await cond when unless either switch converge sweep shrink meet binary dp extend phantom memo fuzz within rollback retry race barrier component contract workspace env packet secure singleton actor observable threadsafe data resource. Type names: int float str bool list dict tuple vec mat set counter char date time datetime interval.</p>
+
+      <h3 id="tokens">Punctuation and operators</h3>
+      <p>( ) { } [ ] , ; : . .. | &gt; = + - * / % ** == != &lt; &gt; &lt;= &gt;= and or not &amp; | ^ &lt;&lt; &gt;&gt; ~ ~== |&gt; @ # $ ? !</p>
+
+      <!-- ========== REFERENCE SUMMARY ========== -->
+      <h2 id="reference-summary">CLI &amp; grammar</h2>
+      <h3>CLI</h3>
+      <pre><code>jade file.jdl          # Run file
+jade -                 # Run from stdin
+jade run file.jdl      # Same as above
+jade repl              # Interactive REPL
+jade idle              # IDLE-style shell
+jade check file.jdl     # Syntax check only
+jade build file.jdl [-o name] [--release]  # AOT compile</code></pre>
+
+      <h3>Grammar summary</h3>
+      <ul>
+        <li>Function: <code>fn [type?] | name ( params ) &gt; body</code>. Params: <code>x</code> or <code>type | x</code>.</li>
+        <li>Variable: <code>type: name = expr</code>.</li>
+        <li>Block: <code>{ stmt; stmt }</code>. Newlines separate statements.</li>
+        <li>String interpolation: <code>"text {var}"</code>, <code>"{var:.2f}"</code>.</li>
+      </ul>
+
+      <h3>Operators (precedence high to low)</h3>
+      <ul>
+        <li>Unary: <code>not</code> <code>-</code> <code>~</code></li>
+        <li>Power: <code>**</code></li>
+        <li>Factor: <code>*</code> <code>/</code> <code>%</code></li>
+        <li>Term: <code>+</code> <code>-</code></li>
+        <li>Shift: <code>&lt;&lt;</code> <code>&gt;&gt;</code></li>
+        <li>Bitwise: <code>&amp;</code> <code>^</code> <code>|</code></li>
+        <li>Comparison: <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></li>
+        <li>Equality: <code>==</code> <code>!=</code> <code>~==</code></li>
+        <li>Logical: <code>and</code> <code>or</code></li>
+        <li>Pipeline: <code>|&gt;</code></li>
+      </ul>
+
+      <p class="see-also">See also: <a href="getting-started.html">Getting started</a>, <a href="syntax.html">Syntax</a>, <a href="types.html">Types &amp; literals</a>, <a href="builtins.html">Built-in reference</a>.</p>
+
+      <p class="easter-egg-hint" style="margin-top:3rem; font-size:0.8rem; color:var(--text-dim);">Easter egg: try the Konami code (↑↑↓↓←→←→BA) anywhere on this site.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>

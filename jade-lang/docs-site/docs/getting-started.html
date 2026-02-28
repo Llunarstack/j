@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Getting started — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" class="active" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#installation">Installation</a>
+        <a href="#run-a-file">Run a file</a>
+        <a href="#repl">REPL</a>
+        <a href="#check-syntax">Check syntax</a>
+        <a href="#build-native">Build native binary</a>
+        <a href="#first-program">First program</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Getting started</h1>
+      <p>Run Jade from the command line: execute a file, start the REPL, or build a native binary.</p>
+
+      <h2 id="installation">Installation</h2>
+      <ul>
+        <li><strong>Windows:</strong> Run <code>jade-1.0.0-windows-x86_64-setup.exe</code> from releases, or <code>cargo build --release</code> in <code>jade-lang</code>. Binary: <code>target\release\jade.exe</code>.</li>
+        <li><strong>macOS / Linux:</strong> From repo root, <code>cd jade-lang && cargo build --release</code>. Binary: <code>target/release/jade</code>. Optional: <code>installers/linux/install.sh</code> or <code>installers/macos/install.sh</code>.</li>
+      </ul>
+
+      <h2 id="run-a-file">Run a file</h2>
+      <pre><code>jade <span class="str">file.jdl</span>
+jade run <span class="str">file.jdl</span></code></pre>
+      <p>Use <code>jade -</code> to read source from stdin (e.g. pipe from editor).</p>
+
+      <h2 id="repl">REPL</h2>
+      <pre><code>jade repl
+jade idle   <span class="com"># IDLE-style interactive shell</span></code></pre>
+
+      <h2 id="check-syntax">Check syntax</h2>
+      <pre><code>jade check <span class="str">file.jdl</span></code></pre>
+
+      <h2 id="build-native">Build native binary (AOT)</h2>
+      <pre><code>jade build <span class="str">file.jdl</span> -o myapp
+jade build <span class="str">file.jdl</span> --release -o myapp</code></pre>
+      <p>Requires LLVM for full AOT support on your platform.</p>
+
+      <h2 id="first-program">First program</h2>
+      <div class="runnable-example">
+        <div class="run-toolbar">
+          <button type="button" class="run-btn" aria-label="Run and show output">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            Run
+          </button>
+        </div>
+        <pre><code><span class="com"># Built-in algo + typed fn · string interpolation</span>
+<span class="kw">list</span>: a = [<span class="num">-2</span>, <span class="num">1</span>, <span class="num">-3</span>, <span class="num">4</span>, <span class="num">-1</span>, <span class="num">2</span>, <span class="num">1</span>]
+out(<span class="str">"Max subarray: {kadane(a)}"</span>)
+
+<span class="fn">fn</span> | fib ( <span class="typ">int</span> | n ) > {
+  <span class="kw">if</span> n &lt;= <span class="num">1</span> { <span class="kw">return</span> n }
+  <span class="kw">return</span> fib(n - <span class="num">1</span>) + fib(n - <span class="num">2</span>)
+}
+out(<span class="str">"fib(10) = {fib(10)}"</span>)</code></pre>
+        <div class="run-output" id="first-program-output" hidden>
+          <div class="run-output-label">Output</div>
+          <pre>Max subarray: 6
+fib(10) = 55</pre>
+        </div>
+      </div>
+      <p>Run with <code>jade yourfile.jdl</code>.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+  <script src="../run-example.js"></script>
+</body>
+</html>

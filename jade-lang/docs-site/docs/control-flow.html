@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control flow — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#if-else">if / else</a>
+        <a href="#match">match</a>
+        <a href="#cond-when">cond / when</a>
+        <a href="#unless">unless</a>
+        <a href="#either">either</a>
+        <a href="#switch">switch</a>
+        <a href="#while">while</a>
+        <a href="#for">for</a>
+        <a href="#return-break-continue">return / break / continue</a>
+        <a href="#defer">defer</a>
+        <a href="#try-catch-finally">try / catch / finally</a>
+        <a href="#panic">panic</a>
+        <a href="#guard-return">guard return</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Control flow</h1>
+      <p>Conditionals, loops, and error handling in Jade.</p>
+
+      <h2 id="if-else">if / else</h2>
+      <pre><code><span class="kw">if</span> condition {
+  <span class="com">// then</span>
+} <span class="kw">else if</span> other {
+  <span class="com">// else if</span>
+} <span class="kw">else</span> {
+  <span class="com">// else</span>
+}</code></pre>
+      <p>One-liner: <code>if cond : expr</code>.</p>
+
+      <h2 id="match">match</h2>
+      <pre><code><span class="kw">match</span> expr {
+  <span class="kw">case</span> pattern1 > body1
+  <span class="kw">case</span> pattern2 > body2
+  <span class="kw">else</span> > default_body
+}</code></pre>
+
+      <h2 id="cond-when">cond / when</h2>
+      <p>Multi-branch on a value. <code>cond value { case v > body ... }</code>, <code>when value { case v > body ... }</code>.</p>
+
+      <h2 id="unless">unless</h2>
+      <p><code>unless condition { body }</code> — run body when condition is false. Optional <code>else</code>.</p>
+
+      <h2 id="either">either</h2>
+      <p><code>either expr { |&gt; true : body1 |&gt; false : body2 }</code> — branch on boolean.</p>
+
+      <h2 id="switch">switch</h2>
+      <p><code>switch expr { case a > body1 case b > body2 }</code>.</p>
+
+      <h2 id="while">while</h2>
+      <pre><code>while condition {
+  body
+}</code></pre>
+
+      <h2 id="for">for</h2>
+      <pre><code><span class="kw">for</span> x <span class="kw">in</span> iterable { body }
+<span class="kw">for</span> index, x <span class="kw">in</span> iterable { body }   <span class="com"># indexed</span></code></pre>
+      <p>Iterables: lists, ranges, strings (chars), dict keys/values. Optional modifiers: <code>for x in list rev</code> (reverse), <code>step n</code>, <code>until cond</code>, <code>where cond</code>, <code>zip</code>, <code>parallel</code>, <code>chunked n</code>, <code>windowed n</code>.</p>
+
+      <h2 id="return-break-continue">return / break / continue</h2>
+      <p><code>return</code> or <code>return value</code>. <code>break</code> and <code>continue</code> in loops.</p>
+
+      <h2 id="defer">defer</h2>
+      <p><code>defer expr</code> — run expr when leaving the current scope.</p>
+
+      <h2 id="try-catch-finally">try / catch / finally</h2>
+      <pre><code><span class="kw">try</span> {
+  risky()
+} <span class="kw">catch</span> err {
+  handle(err)
+} <span class="kw">finally</span> {
+  cleanup()
+}</code></pre>
+      <p>Optional <code>catch var</code> to bind the error. <code>expr?</code> for try-expression.</p>
+
+      <h2 id="panic">panic</h2>
+      <p><code>panic(message)</code> — abort with error message.</p>
+
+      <h2 id="guard-return">guard return</h2>
+      <p><code>guard condition &gt; return value</code> — early return when condition is true.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Types &amp; literals — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#primitives">Primitives</a>
+        <a href="#string-interpolation">String interpolation</a>
+        <a href="#collections">Collections</a>
+        <a href="#ranges">Ranges</a>
+        <a href="#special-literals">Special literals</a>
+        <a href="#type-names">Type names</a>
+        <a href="#indexing">Indexing and slicing</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Types &amp; literals</h1>
+      <p>Built-in types and their literal syntax.</p>
+
+      <h2 id="primitives">Primitives</h2>
+      <table>
+        <thead><tr><th>Type</th><th>Literal / example</th></tr></thead>
+        <tbody>
+          <tr><td>int</td><td><code>42</code>, <code>-1</code></td></tr>
+          <tr><td>float</td><td><code>3.14</code>, <code>1e-2</code></td></tr>
+          <tr><td>str</td><td><code>"hello"</code>, <code>"escape \" quote"</code></td></tr>
+          <tr><td>bool</td><td><code>true</code>, <code>false</code></td></tr>
+          <tr><td>char</td><td><code>'a'</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="string-interpolation">String interpolation</h2>
+      <p>In double-quoted strings: <code>"Hello {name}"</code>, <code>"Sum: {total}"</code>. Format specs: <code>{name:>10}</code>, <code>{x:.2f}</code>.</p>
+
+      <h2 id="collections">Collections</h2>
+      <table>
+        <thead><tr><th>Type</th><th>Literal / example</th></tr></thead>
+        <tbody>
+          <tr><td>list</td><td><code>[1, 2, 3]</code>, <code>[]</code></td></tr>
+          <tr><td>dict</td><td><code>{"a": 1, "b": 2}</code>, <code>{}</code></td></tr>
+          <tr><td>tuple</td><td><code>(a, b)</code>, <code>()</code></td></tr>
+          <tr><td>set</td><td>Set of strings (via built-in or constructor).</td></tr>
+          <tr><td>counter</td><td>Frequency counter (via built-in).</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="ranges">Ranges</h2>
+      <p><code>start..end</code> (inclusive end), <code>start..&lt;end</code> (exclusive). Optional step in some contexts. <code>range(n)</code>, <code>range(a, b)</code>, <code>range(a, b, step)</code>.</p>
+
+      <h2 id="special-literals">Special literals</h2>
+      <p><code>inf</code> / <code>-inf</code>, <code>#hex</code>, <code>date"..."</code>, <code>time"..."</code>, <code>datetime"..."</code>, <code>$1.50</code> (money), emoji. <code>_</code> (underscore) is the anonymous variable.</p>
+
+      <h2 id="type-names">Type names (for declarations)</h2>
+      <p><code>int</code> <code>float</code> <code>str</code> <code>bool</code> <code>list</code> <code>dict</code> <code>tuple</code> <code>vec</code> <code>mat</code> <code>set</code> <code>counter</code> <code>char</code> <code>date</code> <code>time</code> <code>datetime</code> <code>interval</code> — and identifier for custom types (class, enum).</p>
+
+      <h2 id="indexing">Indexing and slicing</h2>
+      <p><code>list[i]</code>, <code>list[start:end]</code>, <code>list[start:end:step]</code>. Same for strings. Dict: <code>d[key]</code>, <code>d.get(key)</code>.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>

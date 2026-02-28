@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Syntax &amp; grammar — Jade</title>
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav">
+      <a href="../index.html" class="logo-wrap"><img src="../assets/jade.png" alt="Jade" /><span>Jade</span></a>
+      <div class="nav-links">
+        <a href="getting-started.html" data-i18n="nav.docs">Documentation</a>
+        <a href="installers.html" data-i18n="nav.installers">Installers</a>
+      </div>
+      <div class="lang-switcher">
+        <button type="button" class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label">EN</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg>
+        </button>
+        <div class="lang-dropdown" id="lang-dropdown" role="listbox" aria-label="Language">
+          <button type="button" class="lang-option active" role="option" data-lang="en" data-i18n="lang.en">English</button>
+          <button type="button" class="lang-option" role="option" data-lang="es" data-i18n="lang.es">Español</button>
+          <button type="button" class="lang-option" role="option" data-lang="fr" data-i18n="lang.fr">Français</button>
+          <button type="button" class="lang-option" role="option" data-lang="de" data-i18n="lang.de">Deutsch</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav>
+        <a href="getting-started.html">Getting started</a>
+        <a href="syntax.html">Syntax &amp; grammar</a>
+        <a href="control-flow.html">Control flow</a>
+        <a href="types.html">Types &amp; literals</a>
+        <a href="functions.html">Functions</a>
+        <a href="reference.html">Language reference</a>
+        <a href="builtins.html">Built-in reference</a>
+        <a href="installers.html">Installers</a>
+      </nav>
+      <nav class="docs-toc">
+        <div class="toc-title">On this page</div>
+        <a href="#functions">Functions</a>
+        <a href="#variables">Variables</a>
+        <a href="#operators">Operators</a>
+        <a href="#literals">Literals</a>
+        <a href="#keywords">Keywords</a>
+      </nav>
+    </aside>
+    <article class="docs-content">
+      <h1>Syntax &amp; grammar</h1>
+      <p>Jade uses a pipe-based function syntax and familiar operators. Newlines separate statements; blocks use <code>{ }</code>.</p>
+
+      <h2 id="functions">Functions</h2>
+      <p>Declare with <code>fn | name (params) > body</code>. Optional return type before the pipe: <code>fn return_type | name (params) > body</code>.</p>
+      <ul>
+        <li><strong>Untyped params:</strong> <code>(x)</code>, <code>(x, y)</code></li>
+        <li><strong>Typed params:</strong> <code>(int | a, str | b)</code></li>
+      </ul>
+      <pre><code><span class="fn">fn</span> | add_one (x) > { <span class="kw">return</span> x + <span class="num">1</span> }
+<span class="fn">fn</span> | add ( <span class="typ">int</span> | a, <span class="typ">int</span> | b ) > { <span class="kw">return</span> a + b }</code></pre>
+
+      <h2 id="variables">Variables</h2>
+      <p>Type-annotated: <code>type: name = value</code>. Examples: <code>int: n = 0</code>, <code>str: s = "hi"</code>, <code>list: xs = [1,2,3]</code>, <code>dict: d = {"a": 1}</code>.</p>
+
+      <h2 id="operators">Operators</h2>
+      <table>
+        <thead><tr><th>Category</th><th>Operators</th></tr></thead>
+        <tbody>
+          <tr><td>Arithmetic</td><td><code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code> <code>**</code></td></tr>
+          <tr><td>Comparison</td><td><code>==</code> <code>!=</code> <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td></tr>
+          <tr><td>Logical</td><td><code>and</code> <code>or</code> <code>not</code></td></tr>
+          <tr><td>Bitwise</td><td><code>&amp;</code> <code>|</code> <code>^</code> <code>&lt;&lt;</code> <code>&gt;&gt;</code> <code>~</code></td></tr>
+          <tr><td>Other</td><td><code>~==</code> (constant-time equality), <code>|&gt;</code> (pipeline), <code>..</code> <code>..&lt;</code> (ranges)</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="literals">Literals</h2>
+      <p>Numbers: <code>42</code>, <code>3.14</code>. Strings: <code>"double"</code>. Booleans: <code>true</code>, <code>false</code>. Chars: <code>'x'</code>. Lists: <code>[1, 2, 3]</code>. Dicts: <code>{"k": v}</code>. Tuples: <code>(a, b)</code>. Ranges: <code>1..10</code>, <code>1..&lt;10</code>. String interpolation: <code>"Hello {name}"</code> or <code>"Sum: {total}"</code>.</p>
+
+      <h2 id="keywords">Keywords (reserved)</h2>
+      <p><code>fn</code> <code>class</code> <code>if</code> <code>else</code> <code>match</code> <code>case</code> <code>while</code> <code>for</code> <code>in</code> <code>break</code> <code>continue</code> <code>return</code> <code>yield</code> <code>defer</code> <code>try</code> <code>catch</code> <code>finally</code> <code>panic</code> <code>use</code> <code>import</code> <code>let</code> <code>static</code> <code>enum</code> <code>trait</code> <code>async</code> <code>await</code> <code>cond</code> <code>when</code> <code>unless</code> <code>either</code> <code>switch</code> <code>converge</code> — and type names like <code>int</code> <code>str</code> <code>list</code> <code>dict</code> when used in declarations.</p>
+    </article>
+  </div>
+  <footer class="site-footer"><p>Jade 1.0.0</p></footer>
+  <script src="../script.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="../easter-egg.js"></script>
+</body>
+</html>
