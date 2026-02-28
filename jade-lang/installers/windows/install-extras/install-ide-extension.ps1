@@ -1,5 +1,5 @@
-# Install Jade VS Code extension into user's VS Code and Cursor extensions folders.
-# Called by the Jade Windows installer when "Install Jade extension for VS Code and Cursor" is selected.
+# Install Jade VS Code extension into user's VS Code (and compatible editor) extensions folders.
+# Called by the Jade Windows installer when "Install Jade extension for VS Code" is selected.
 param([Parameter(Mandatory=$true)][string]$JadeAppPath)
 
 $ErrorActionPreference = "Stop"

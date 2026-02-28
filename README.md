@@ -19,7 +19,7 @@
 
 ## What is Jade?
 
-Jade is a **memory-safe**, **readable** programming language and toolchain built for data-heavy and algorithmic code. One binary: interpreter, REPL, package manager, and VS Code support.
+Jade is a **memory-safe**, **readable** language and toolchain for data and algorithms. One binary: interpreter, REPL, and the **Jolt** package manager. No runtime dependency—ship a single executable.
 
 ```jdl
 fn | greet ( str | name ) > {
@@ -38,10 +38,11 @@ out("Sum: " + total)
 
 | | |
 |---|---|
-| **Readable** | Pipelines (`\|>`), pattern matching, `cond`/`when`, lambdas. Typed variables and classes without boilerplate. |
-| **Algorithm-friendly** | Loops that match how you think: `sweep`, `meet`, binary-search, `while_nonzero`. Rich stdlib: graphs, deques, priority queues, matrices, `gcd`/`lcm`, `bfs`/`dfs`. |
-| **One toolchain** | Run scripts (`jade file.jdl`), REPL (`jade repl`), or structured projects with the Jolt package manager. |
-| **Editor support** | VS Code & Cursor: syntax, run-from-buffer (no save), debounced autosave. Optional .jdl file association and icon. |
+| **Pipelines & pattern matching** | Thread values with `\|>`. Match on structure with `cond` and `when`. Lambdas and typed variables without boilerplate. |
+| **Built for algorithms** | **Graphs** in the box: `bfs`, `dfs`, `dijkstra`, `topological_sort`. **Deques** and **priority queues**. **Union-find** and **tries**. Binary search helpers: `lower_bound`, `upper_bound`, `prefix_sum`, **Kadane**, `merge_sorted`, `sliding_window`, `two_pointers_sum`, `flood_fill`. |
+| **Number crunching** | `gcd`/`lcm`, `min`/`max`, **stats** (mean, variance, etc.), **bits** (popcount, leading zeros). **Memoization** for one-arg functions. |
+| **Lists that feel right** | List comprehensions, `map`/`filter`/`reduce`/`zip`, `range`. Mutable or build-new style. |
+| **One binary, many modes** | Run a script (`jade file.jdl`), drop into the **REPL** (`jade repl`), or use **Jolt** for projects with a `jade.toml` and dependencies. Optional AOT compile and JIT. |
 
 ---
 
@@ -78,7 +79,7 @@ cargo build --release
 # Add to PATH or: cargo install --path .
 ```
 
-Full install options (portable zip, MSI, IDE setup): **[docs/INSTALL.md](docs/INSTALL.md)**.
+More options (portable zip, MSI): **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 ---
 
@@ -103,7 +104,7 @@ jade repl
 | Path | What |
 |------|------|
 | [jade-lang/](jade-lang/) | Rust crate: interpreter, compiler, REPL, Jolt |
-| [jade-lang/installers/](jade-lang/installers/) | Windows (Inno, MSI, portable), Linux, macOS, IDE extension |
+| [jade-lang/installers/](jade-lang/installers/) | Windows (Inno, MSI, portable), Linux, macOS |
 | [docs/](docs/README.md) | [INSTALL](docs/INSTALL.md) · [BOOTSTRAP](docs/BOOTSTRAP.md) · [CONTRIBUTING](docs/CONTRIBUTING.md) · [Structure](docs/PROJECT_STRUCTURE.md) |
 | [bootstrap/](bootstrap/) | Jade scripts that process Jade source (bootstrapping) |
 

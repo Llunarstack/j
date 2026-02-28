@@ -72,7 +72,7 @@ UTI_EOF
 echo "Registered .jdl UTI for Finder/Spotlight (org.jade-lang.source)."
 echo "To run .jdl files by double-click: Right-click file → Open With → Other → choose 'jade' or Terminal, then: jade \"\$file\""
 
-# Install Jade extension for VS Code and Cursor (syntax, run from buffer, autosave)
+# Install Jade extension for VS Code (syntax, run from buffer, autosave)
 install_ide_extension() {
   local ext_src="$REPO_JADE/installers/ide/vscode-snippet"
   local ext_name="jade-language-0.2.0"

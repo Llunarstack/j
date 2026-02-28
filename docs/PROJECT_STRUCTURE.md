@@ -23,7 +23,7 @@ Jade/
 │       ├── linux/         # install.sh, .deb, .rpm, AppImage
 │       ├── macos/         # install.sh, .pkg, .dmg
 │       ├── android/       # Termux build
-│       ├── ide/           # VS Code/Cursor extension (syntax, run from buffer)
+│       ├── ide/           # Editor extension (syntax, run from buffer)
 │       └── mime/          # MIME type docs
 └── .github/               # CI/CD, issue templates
 ```

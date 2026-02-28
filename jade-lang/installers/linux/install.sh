@@ -77,7 +77,7 @@ Categories=Development;
 DESKTOP_EOF
 echo "Desktop entry: $APPS_DIR/jade-run.desktop (Open with Jade)"
 
-# Install Jade extension for VS Code and Cursor (syntax, run from buffer, autosave)
+# Install Jade extension for VS Code (syntax, run from buffer, autosave)
 install_ide_extension() {
   local ext_src="$REPO_JADE/installers/ide/vscode-snippet"
   local ext_name="jade-language-0.2.0"

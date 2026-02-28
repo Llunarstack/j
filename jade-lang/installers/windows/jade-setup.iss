@@ -46,7 +46,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "addtopath"; Description: "Add Jade to PATH (run ""jade"" from any terminal)"; GroupDescription: "Options:"; Flags: checkedonce
-Name: "installext"; Description: "Install Jade extension for VS Code and Cursor (syntax, run from buffer, autosave)"; GroupDescription: "Options:"; Flags: checkedonce
+Name: "installext"; Description: "Install Jade extension for VS Code (syntax, run from buffer, autosave)"; GroupDescription: "Options:"; Flags: checkedonce
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "associatejade"; Description: "Associate .jdl files with Jade (run/interpret)"; GroupDescription: "File associations:"; Flags: checkedonce
 
@@ -67,7 +67,7 @@ Source: ".\install-extras\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: ".\install-extras\NEWS.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: ".\install-extras\BUILD.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: ".\install-extras\install-ide-extension.ps1"; DestDir: "{app}"; Flags: ignoreversion
-; VS Code / Cursor extension (syntax, run from buffer, debounced autosave) - path from build-exe.ps1
+; VS Code extension (syntax, run from buffer, debounced autosave) - path from build-exe.ps1
 #ifdef IdeExtPath
 Source: "{#IdeExtPath}\*"; DestDir: "{app}\ide\vscode"; Flags: ignoreversion recursesubdirs
 #else

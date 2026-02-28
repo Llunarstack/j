@@ -1,6 +1,6 @@
 # IDE recognition for Jade
 
-Use these so **VS Code, Cursor, JetBrains, and other editors** recognize `.jdl` as the Jade programming language and use the **official icon** (`jade-lang/installers/windows/icon/jade.png`).
+Use these so **VS Code, JetBrains, and other editors** recognize `.jdl` as the Jade programming language and use the **official icon** (`jade-lang/installers/windows/icon/jade.png`).
 
 ## Logo without extensions (all IDEs / file managers)
 
@@ -12,7 +12,7 @@ So **any** IDE or file manager shows the Jade logo for `.jdl` files without inst
 
 No IDE extension is required for the logo on Windows and Linux after install.
 
-## VS Code / Cursor
+## VS Code
 
 ### Run the current .jdl file
 
@@ -64,18 +64,18 @@ To run code without saving at all, the **editor** must send the current buffer t
 
 ### Extension bundled with the language
 
-The Jade **Windows installer** and **Linux/macOS install scripts** install the VS Code/Cursor extension automatically:
+The Jade **Windows installer** and **Linux/macOS install scripts** can install the VS Code extension automatically:
 
-- **Windows:** During setup, leave **"Install Jade extension for VS Code and Cursor"** checked (default). The extension is copied into your `%USERPROFILE%\.vscode\extensions` and `%USERPROFILE%\.cursor\extensions` so both IDEs get syntax, run-from-buffer, and debounced autosave.
-- **Linux / macOS:** Run `./install.sh` from `jade-lang/installers/linux` or `jade-lang/installers/macos`; the script copies the extension into `~/.vscode/extensions` and `~/.cursor/extensions`.
+- **Windows:** During setup, leave **"Install Jade extension for VS Code"** checked (default). The extension is copied into your `%USERPROFILE%\.vscode\extensions`.
+- **Linux / macOS:** Run `./install.sh` from `jade-lang/installers/linux` or `jade-lang/installers/macos`; the script can copy the extension into `~/.vscode/extensions`.
 
-Restart VS Code or Cursor after installing Jade so they pick up the extension.
+Restart VS Code after installing Jade so it picks up the extension.
 
 ### Manual install (syntax highlighting)
 
 If you didn’t use the installer or want to install the extension by hand:
 
-1. Open **VS Code** or **Cursor**.
+1. Open **VS Code**.
 2. **Ctrl+Shift+P** (Cmd+Shift+P on Mac) → **Developer: Install Extension from Location...**
 3. Select the **`jade-lang/installers/ide/vscode-snippet`** folder (or `C:\Program Files\Jade 1.0.0\ide\vscode` after a Windows install).
 4. Click **Reload** when prompted.
