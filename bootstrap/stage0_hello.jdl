@@ -1,7 +1,7 @@
-# Stage 0 bootstrap: trivial check that Jade runs on the installed interpreter.
+# Trivial check that Jade runs on the installed interpreter.
 # Run from repo root: jade bootstrap/stage0_hello.jdl
 
-str: msg = "Jade bootstrapping — Stage 0"
+str: msg = "Jade — language runs on itself"
 out(msg)
 out("Run 'jade bootstrap/stage0_stats.jdl' to see Jade analyzing Jade source.")
 

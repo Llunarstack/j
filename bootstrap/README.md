@@ -1,6 +1,6 @@
-# Bootstrap scripts
+# Jade written in Jade
 
-Jade scripts that run on the Rust-based interpreter and operate on Jade source or the repo. Part of the [bootstrapping plan](../BOOTSTRAP.md).
+This folder is **the language coded in the language**: Jade scripts that run on the Jade interpreter and operate on Jade source (parsing, stats, tooling). No separate “bootstrap plan”—just Jade code that works on `.jdl` files.
 
 ## Run from repo root
 
@@ -9,10 +9,9 @@ jade bootstrap/stage0_hello.jdl
 jade bootstrap/stage0_stats.jdl
 ```
 
-- **stage0_hello.jdl** — Prints a short “Jade bootstrapping” message.
-- **stage0_stats.jdl** — Reads `bootstrap/stage0_hello.jdl` and prints line count and simple pattern counts.
+- **stage0_hello.jdl** — Prints a short message that Jade is running.
+- **stage0_stats.jdl** — Reads a `.jdl` file and reports line count and simple pattern counts (variable/function declarations).
 
 ## Adding scripts
 
-1. Add a new `.jdl` file here (e.g. `stage0_foo.jdl`).
-2. Update this README and the stages table in [BOOTSTRAP.md](../BOOTSTRAP.md).
+Add new `.jdl` files here and extend this README. Keep scripts focused on processing Jade source or the repo.

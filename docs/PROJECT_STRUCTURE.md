@@ -8,11 +8,10 @@ Jade/
 ├── docs/                  # Project documentation
 │   ├── README.md          # Doc index
 │   ├── INSTALL.md         # Install guide
-│   ├── BOOTSTRAP.md       # Bootstrapping
 │   ├── CONTRIBUTING.md    # Contribution guide
 │   └── CODE_OF_CONDUCT.md
 ├── assets/                # Logos, icons (repo-level)
-├── bootstrap/             # Bootstrap Jade scripts (stage0_hello.jdl, etc.)
+├── bootstrap/             # Jade written in Jade (scripts that process .jdl source)
 ├── jade-lang/             # Main language crate (Rust)
 │   ├── src/               # Interpreter, compiler, REPL, Jolt
 │   ├── tests/             # Integration tests (.rs) and fixtures

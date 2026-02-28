@@ -19,7 +19,7 @@
 
 ## What is Jade?
 
-Jade is a **memory-safe**, **readable** language and toolchain for data and algorithms. One binary: interpreter, REPL, and the **Jolt** package manager. No runtime dependency—ship a single executable.
+Jade is a **memory-safe**, **readable** language built for data and algorithms. Values flow through **pipelines** (`x |> f`); **cond** and **when** route a value into the first matching branch; **either** is a pipeline-style ternary. You get **pattern matching** with guards, **broadcast calls** (`fn.(list, scalar)`), and **borrow_split(list, i) |> left, right { ... }** to split a list and use both halves in one scope. A **converge** loop runs until the body’s result stops changing (fixed-point). Loops go beyond plain `for`: **indexed**, **reverse**, **step**, **zip**, **parallel**, **chunked**. First-class **graphs** (bfs, dfs, dijkstra, topological sort), **deques**, **priority queues**, **union-find**, **tries**, **ring buffers**, **sorted lists**, **sliding windows**. Declare variables with **enc** or **secret** for encryption and redaction. **memo(f)** in the stdlib; algo helpers like **lower_bound**, **upper_bound**, **prefix_sum**, **kadane**, **merge_sorted**, **sliding_window**, **two_pointers_sum**, **flood_fill**. One binary: interpreter, REPL, Jolt.
 
 ```jdl
 fn | greet ( str | name ) > {
@@ -38,11 +38,11 @@ out("Sum: " + total)
 
 | | |
 |---|---|
-| **Pipelines & pattern matching** | Thread values with `\|>`. Match on structure with `cond` and `when`. Lambdas and typed variables without boilerplate. |
-| **Built for algorithms** | **Graphs** in the box: `bfs`, `dfs`, `dijkstra`, `topological_sort`. **Deques** and **priority queues**. **Union-find** and **tries**. Binary search helpers: `lower_bound`, `upper_bound`, `prefix_sum`, **Kadane**, `merge_sorted`, `sliding_window`, `two_pointers_sum`, `flood_fill`. |
-| **Number crunching** | `gcd`/`lcm`, `min`/`max`, **stats** (mean, variance, etc.), **bits** (popcount, leading zeros). **Memoization** for one-arg functions. |
-| **Lists that feel right** | List comprehensions, `map`/`filter`/`reduce`/`zip`, `range`. Mutable or build-new style. |
-| **One binary, many modes** | Run a script (`jade file.jdl`), drop into the **REPL** (`jade repl`), or use **Jolt** for projects with a `jade.toml` and dependencies. Optional AOT compile and JIT. |
+| **Pipelines & routing** | `x \|> f` passes `x` as `_` into `f`; chain as long as you like. **cond** / **when** push a value through `condition \|> body` branches; **either** expr `\|>` true_body `\|>` false_body. **Match** with guards. **borrow_split(list, i) \|> left, right { body }** splits and binds both sides. |
+| **Loops that match algorithms** | **converge { body }** runs until the body returns the same value twice (fixed-point). **for** comes as indexed, reverse, step, zip, parallel, chunked. **Broadcast** calls: `fn.(list, scalar)` applies element-wise. |
+| **Data structures in the language** | **Graph** (bfs, dfs, dijkstra, topological_sort), **deque**, **priority queue**, **union-find** (uf_new, uf_find, uf_union, uf_connected), **trie** (insert, contains, prefix_search), **ring buffer**, **sorted list**, **bag** (multiset), **sliding window** and **view** (zero-copy). |
+| **Algo & number primitives** | **binary_search**, **lower_bound**, **upper_bound**, **prefix_sum**, **kadane**, **merge_sorted**, **sliding_window**, **two_pointers_sum**, **flood_fill**. **gcd**/lcm, **stats** (mean, variance), **bits** (popcount, etc.). **memo(f)** memoizes a one-arg function. |
+| **Security in the type system** | Declare with **enc** or **secret**; values are stored encrypted or redacted in logs. First-class **Encrypted** and **Secret** in the runtime. |
 
 ---
 
@@ -105,15 +105,14 @@ jade repl
 |------|------|
 | [jade-lang/](jade-lang/) | Rust crate: interpreter, compiler, REPL, Jolt |
 | [jade-lang/installers/](jade-lang/installers/) | Windows (Inno, MSI, portable), Linux, macOS |
-| [docs/](docs/README.md) | [INSTALL](docs/INSTALL.md) · [BOOTSTRAP](docs/BOOTSTRAP.md) · [CONTRIBUTING](docs/CONTRIBUTING.md) · [Structure](docs/PROJECT_STRUCTURE.md) |
-| [bootstrap/](bootstrap/) | Jade scripts that process Jade source (bootstrapping) |
+| [docs/](docs/README.md) | [INSTALL](docs/INSTALL.md) · [CONTRIBUTING](docs/CONTRIBUTING.md) · [Structure](docs/PROJECT_STRUCTURE.md) |
+| [bootstrap/](bootstrap/) | Jade written in Jade: scripts that process Jade source |
 
 ---
 
 ## Documentation
 
 - **Install & run:** [docs/INSTALL.md](docs/INSTALL.md)
-- **Bootstrapping:** [docs/BOOTSTRAP.md](docs/BOOTSTRAP.md)
 - **Contributing:** [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) · [Code of Conduct](docs/CODE_OF_CONDUCT.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 

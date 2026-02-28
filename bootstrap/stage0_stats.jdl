@@ -1,4 +1,4 @@
-# Stage 0 bootstrap: read a .jdl file and report simple stats (lines, pattern counts).
+# Read a .jdl file and report simple stats (lines, pattern counts). Jade processing Jade.
 # Run from repo root: jade bootstrap/stage0_stats.jdl
 # Reads bootstrap/stage0_hello.jdl by default.
 
